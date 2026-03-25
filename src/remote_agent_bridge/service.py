@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Dict, List, Optional
 
@@ -268,10 +269,26 @@ class BridgeService:
         return rendered
 
     def _resolve_workflow_expression(self, expression: str, results: List[RemoteOperationResult]) -> Any:
-        path = expression.strip()
+        expression_text = expression.strip()
+        if not expression_text:
+            raise ValueError("Workflow template expression cannot be empty.")
+
+        parts = [part.strip() for part in expression_text.split("|")]
+        path = parts[0]
         if not path:
             raise ValueError("Workflow template expression cannot be empty.")
-        return self._resolve_workflow_path(path, {"steps": results})
+
+        value = self._resolve_workflow_path(path, {"steps": results})
+        for filter_name in parts[1:]:
+            value = self._apply_workflow_template_filter(filter_name, value, expression_text)
+        return value
+
+    def _apply_workflow_template_filter(self, filter_name: str, value: Any, expression: str) -> Any:
+        if not filter_name:
+            raise ValueError(f"Workflow template filter cannot be empty: {expression}")
+        if filter_name == "to-json":
+            return json.dumps(self._workflow_template_value(value), ensure_ascii=False)
+        raise ValueError(f"Unsupported workflow template filter: {filter_name}")
 
     def _resolve_workflow_path(self, path: str, context: Any) -> Any:
         current = context

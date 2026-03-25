@@ -226,6 +226,11 @@ Template expressions currently start from `steps`, for example:
 - `{{ steps[1].target.path }}`
 - `prefix={{ steps[0].operation }}`
 
+Template expressions also support a simple `| to-json` filter when a later step needs the full structured result data as one JSON string, for example:
+
+- `{{ steps[0].data | to-json }}`
+- `{{ steps[2].data.matches | to-json }}`
+
 Example `search-text` result shape:
 
 ```json

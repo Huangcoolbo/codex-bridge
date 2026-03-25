@@ -346,6 +346,60 @@ class BridgeServiceTests(unittest.TestCase):
             self.assertEqual(result.data["steps"][1].data["bytes_written"], len("match=3:needle here".encode("utf-8")))
             self.assertTrue(provider.closed)
 
+    def test_workflow_can_render_previous_step_data_as_json_string(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry = HostRegistry(Path(temp_dir) / "hosts.json")
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            provider = FakeProvider()
+            service = BridgeService(registry, factory=FakeFactory(provider))
+
+            result = service.workflow(
+                "lab-win",
+                [
+                    {"operation": "system-info"},
+                    {"operation": "write-file", "path": "C:\\Temp\\system-info.json", "content": "{{ steps[0].data | to-json }}"},
+                ],
+            )
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(result.data["steps"][1].target["path"], "C:\\Temp\\system-info.json")
+            expected_json = '{"computer_name": "LAB", "drives": [], "ipv4_addresses": []}'
+            self.assertEqual(result.data["steps"][1].data["bytes_written"], len(expected_json.encode("utf-8")))
+            self.assertTrue(provider.closed)
+
+    def test_workflow_rejects_unknown_template_filter_clearly(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry = HostRegistry(Path(temp_dir) / "hosts.json")
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            provider = FakeProvider()
+            service = BridgeService(registry, factory=FakeFactory(provider))
+
+            with self.assertRaises(ValueError) as context:
+                service.workflow(
+                    "lab-win",
+                    [
+                        {"operation": "probe"},
+                        {"operation": "write-file", "path": "C:\\Temp\\probe.txt", "content": "{{ steps[0].data | bad-filter }}"},
+                    ],
+                )
+
+            self.assertIn("Unsupported workflow template filter", str(context.exception))
+            self.assertTrue(provider.closed)
+
 
 if __name__ == "__main__":
     unittest.main()

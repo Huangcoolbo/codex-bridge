@@ -200,6 +200,11 @@ codex-bridge workflow lab-win --workflow-file .\workflow.json
 - `{{ steps[1].target.path }}`
 - `prefix={{ steps[0].operation }}`
 
+现在模板表达式还支持简单的 `| to-json` 过滤器，适合把前一步的结构化结果直接转成一整段 JSON 字符串，再写入远程文件或喂给后续命令，例如：
+
+- `{{ steps[0].data | to-json }}`
+- `{{ steps[2].data.matches | to-json }}`
+
 `search-text` 返回的结构里会带上：
 
 - 实际搜索的路径
