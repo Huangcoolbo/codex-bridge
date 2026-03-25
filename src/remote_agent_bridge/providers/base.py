@@ -47,5 +47,9 @@ class RemoteProvider(ABC):
         """Search for text inside one remote file or a directory tree."""
 
     @abstractmethod
+    def system_info(self) -> RemoteOperationResult:
+        """Collect structured remote system information useful for follow-up actions."""
+
+    @abstractmethod
     def close(self) -> None:
         """Release provider resources."""

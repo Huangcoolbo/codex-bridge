@@ -6,7 +6,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Literal, Optional
 
 AuthMethod = Literal["password", "key"]
-OperationName = Literal["probe", "exec", "read-file", "list-dir", "write-file", "search-text"]
+OperationName = Literal["probe", "exec", "read-file", "list-dir", "write-file", "search-text", "system-info"]
 
 
 @dataclass

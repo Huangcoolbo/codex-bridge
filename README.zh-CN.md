@@ -19,6 +19,7 @@
 - 检查远程 Windows 是否能连通
 - 在远程 Windows 上执行命令，支持直接传命令或读取本地 PowerShell 脚本文件
 - 读取远程文件
+- 获取远程系统信息
 - 列出远程目录内容
 - 写入远程文件
 - 在远程文件或目录树里搜索文本
@@ -54,6 +55,7 @@ pip install -e .
 - `scripts/probe-host.ps1`
 - `scripts/exec-remote.ps1`
 - `scripts/read-remote-file.ps1`
+- `scripts/system-info.ps1`
 - `scripts/list-remote-dir.ps1`
 - `scripts/write-remote-file.ps1`
 - `scripts/search-remote-text.ps1`
@@ -110,6 +112,16 @@ powershell -ExecutionPolicy Bypass -File .\scripts\probe-host.ps1 -Name lab-win
 
 这样本地 Codex 读取完文件后，可以直接决定下一步，不必再额外补一次文件信息查询。
 
+其中 `system-info` 现在会一次返回远程 Windows 的关键环境信息，比如：
+
+- 当前用户
+- 系统版本
+- 内存大小
+- IPv4 地址
+- 本地磁盘信息
+
+这样本地 Codex 在开始排查或执行多步操作前，可以先判断远程机器的大致环境。
+
 其中 `search-text` 现在会在单个远程文件或整个目录树里做字面量文本搜索，并返回带文件路径和行号的结构化匹配结果，方便本地 Codex 先搜再决定下一步读哪个文件。
 
 其中 `exec` 现在还支持先切换到一个经过校验的远程工作目录再执行命令，也支持先读取本地 PowerShell 脚本文件再发送到远程执行，更适合连续多步操作。
@@ -136,6 +148,12 @@ codex-bridge exec --cwd C:\Temp --command-file .\ops.ps1 lab-win
 
 ```bash
 codex-bridge read-file lab-win C:\Windows\System32\drivers\etc\hosts
+```
+
+获取远程系统信息：
+
+```bash
+codex-bridge system-info lab-win
 ```
 
 查看远程目录：

@@ -87,6 +87,13 @@ class FakeProvider:
             },
         )
 
+    def system_info(self) -> RemoteOperationResult:
+        return RemoteOperationResult.from_command(
+            "system-info",
+            CommandResult(exit_code=0, stdout="{}", stderr=""),
+            data={"computer_name": "LAB", "drives": [], "ipv4_addresses": []},
+        )
+
     def close(self) -> None:
         self.closed = True
 
@@ -150,6 +157,27 @@ class BridgeServiceTests(unittest.TestCase):
             self.assertEqual(result.target["path"], "C:\\Temp")
             self.assertEqual(result.target["pattern"], "needle")
             self.assertTrue(result.target["recurse"])
+            self.assertTrue(provider.closed)
+
+    def test_system_info_tags_result_with_host(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry = HostRegistry(Path(temp_dir) / "hosts.json")
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            provider = FakeProvider()
+            service = BridgeService(registry, factory=FakeFactory(provider))
+
+            result = service.system_info("lab-win")
+
+            self.assertEqual(result.host, "lab-win")
+            self.assertEqual(result.operation, "system-info")
+            self.assertEqual(result.data["computer_name"], "LAB")
             self.assertTrue(provider.closed)
 
 

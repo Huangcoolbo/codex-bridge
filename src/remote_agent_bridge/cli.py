@@ -47,6 +47,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 password_override=_password_for(service, args.name),
             )
             return _print_operation_result(result)
+        if args.command == "system-info":
+            result = service.system_info(
+                args.name,
+                password_override=_password_for(service, args.name),
+            )
+            return _print_operation_result(result)
         if args.command == "list-dir":
             result = service.list_dir(
                 args.name,
@@ -142,6 +148,9 @@ def build_parser() -> argparse.ArgumentParser:
     read_parser.add_argument("name", help="Host name.")
     read_parser.add_argument("path", help="Remote file path.")
     read_parser.add_argument("--encoding", default="utf-8", help="File encoding to request.")
+
+    system_info_parser = subparsers.add_parser("system-info", help="Collect structured system info from the remote host.")
+    system_info_parser.add_argument("name", help="Host name.")
 
     list_parser = subparsers.add_parser("list-dir", help="List a remote directory.")
     list_parser.add_argument("name", help="Host name.")

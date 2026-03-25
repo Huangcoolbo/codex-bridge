@@ -301,6 +301,63 @@ class WindowsSSHProvider(RemoteProvider):
             },
         )
 
+    def system_info(self) -> RemoteOperationResult:
+        """Collect structured Windows system information for remote follow-up work."""
+        script = """
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $ErrorActionPreference = 'Stop'
+        $os = Get-CimInstance Win32_OperatingSystem
+        $cs = Get-CimInstance Win32_ComputerSystem
+        $bios = Get-CimInstance Win32_BIOS
+        $netAdapters = @(
+          Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { $_.IPAddress -and $_.IPAddress -ne '127.0.0.1' } |
+            Sort-Object InterfaceAlias, IPAddress |
+            ForEach-Object {
+              [ordered]@{
+                interface_alias = $_.InterfaceAlias
+                ip_address = $_.IPAddress
+                prefix_length = $_.PrefixLength
+              }
+            }
+        )
+        $drives = @(
+          Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" |
+            Sort-Object DeviceID |
+            ForEach-Object {
+              [ordered]@{
+                name = $_.DeviceID
+                volume_name = $_.VolumeName
+                size_bytes = if ($_.Size) { [int64]$_.Size } else { $null }
+                free_bytes = if ($_.FreeSpace) { [int64]$_.FreeSpace } else { $null }
+                file_system = $_.FileSystem
+              }
+            }
+        )
+        $payload = [ordered]@{
+          computer_name = $env:COMPUTERNAME
+          current_user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+          os_caption = $os.Caption
+          os_version = $os.Version
+          powershell_version = $PSVersionTable.PSVersion.ToString()
+          manufacturer = $cs.Manufacturer
+          model = $cs.Model
+          bios_serial_number = $bios.SerialNumber
+          total_memory_bytes = if ($cs.TotalPhysicalMemory) { [int64]$cs.TotalPhysicalMemory } else { $null }
+          uptime_seconds = if ($os.LastBootUpTime) { [int][Math]::Floor(((Get-Date) - $os.LastBootUpTime).TotalSeconds) } else { $null }
+          ipv4_addresses = $netAdapters
+          drives = $drives
+        }
+        $payload | ConvertTo-Json -Depth 6
+        """
+        result = self._run_powershell(script, check=True)
+        payload = json.loads(result.stdout)
+        return RemoteOperationResult.from_command(
+            "system-info",
+            result,
+            data=payload,
+        )
+
     def close(self) -> None:
         """Close the underlying transport."""
         self.transport.close()

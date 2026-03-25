@@ -289,6 +289,53 @@ class WindowsSSHProviderTests(unittest.TestCase):
 
         self.assertEqual(context.exception.result.stderr, "Remote search path not found: C:\\Missing")
 
+    def test_system_info_returns_structured_payload(self) -> None:
+        payload = json.dumps(
+            {
+                "computer_name": "LAB-WIN",
+                "current_user": "LAB\\admin",
+                "os_caption": "Microsoft Windows 11 Pro",
+                "os_version": "10.0.26100",
+                "powershell_version": "5.1.26100.1",
+                "manufacturer": "LENOVO",
+                "model": "ThinkPad P1",
+                "bios_serial_number": "ABC123",
+                "total_memory_bytes": 34359738368,
+                "uptime_seconds": 3600,
+                "ipv4_addresses": [
+                    {
+                        "interface_alias": "Ethernet",
+                        "ip_address": "192.168.1.50",
+                        "prefix_length": 24,
+                    }
+                ],
+                "drives": [
+                    {
+                        "name": "C:",
+                        "volume_name": "System",
+                        "size_bytes": 100,
+                        "free_bytes": 40,
+                        "file_system": "NTFS",
+                    }
+                ],
+            }
+        )
+        transport = FakeTransport(CommandResult(exit_code=0, stdout=payload, stderr=""))
+        provider = WindowsSSHProvider(transport)
+
+        result = provider.system_info()
+
+        self.assertEqual(result.operation, "system-info")
+        self.assertEqual(result.data["computer_name"], "LAB-WIN")
+        self.assertEqual(result.data["drives"][0]["name"], "C:")
+        self.assertEqual(result.data["ipv4_addresses"][0]["ip_address"], "192.168.1.50")
+        command = transport.commands[0]
+        encoded = command.rsplit(" ", 1)[-1]
+        decoded = base64.b64decode(encoded).decode("utf-16le")
+        self.assertIn("Get-CimInstance Win32_OperatingSystem", decoded)
+        self.assertIn("Get-NetIPAddress -AddressFamily IPv4", decoded)
+        self.assertIn("Win32_LogicalDisk", decoded)
+
 
 if __name__ == "__main__":
     unittest.main()

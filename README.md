@@ -13,8 +13,8 @@ The first concrete implementation is Windows over OpenSSH. The structure is inte
 
 - host profile registry stored locally in `data/hosts.json`
 - provider/adapter architecture with a Windows provider over an SSH transport
-- CLI commands for `host add`, `host list`, `probe`, `exec`, `read-file`, `list-dir`, `write-file`, and `search-text`, with `exec` supporting inline commands, a local PowerShell script file, and an optional timeout
-- consistent JSON result envelope across `probe`, `exec`, `read-file`, `list-dir`, `write-file`, and `search-text`
+- CLI commands for `host add`, `host list`, `probe`, `exec`, `read-file`, `system-info`, `list-dir`, `write-file`, and `search-text`, with `exec` supporting inline commands, a local PowerShell script file, and an optional timeout
+- consistent JSON result envelope across `probe`, `exec`, `read-file`, `system-info`, `list-dir`, `write-file`, and `search-text`
 - password or key-based SSH auth in the host schema
 - runtime password prompting when the profile omits a stored password
 - basic tests for storage, service, CLI, and Windows provider behavior
@@ -46,6 +46,7 @@ Current helper scripts:
 - `scripts/probe-host.ps1`
 - `scripts/exec-remote.ps1`
 - `scripts/read-remote-file.ps1`
+- `scripts/system-info.ps1`
 - `scripts/list-remote-dir.ps1`
 - `scripts/write-remote-file.ps1`
 - `scripts/search-remote-text.ps1`
@@ -106,6 +107,8 @@ All remote operation commands now print the same JSON envelope shape:
 
 For `read-file`, the bridge now returns file metadata together with text content so a caller can decide the next remote step without issuing another stat command.
 
+For `system-info`, the bridge now returns structured Windows machine details like OS version, current user, memory size, IPv4 addresses, and local drives so a caller can quickly judge the remote environment before deciding the next step.
+
 For `list-dir`, the bridge now verifies that the target exists and is really a directory, then returns the normalized directory path, item count, and per-entry type metadata so a caller can safely chain follow-up operations.
 
 For `exec`, the bridge now forces PowerShell to stop on command errors, emits UTF-8 output, can optionally switch into a validated remote working directory first, can apply a remote execution timeout, and can read a local PowerShell script file before sending it to the remote host, so remote failures and multi-step command chaining are easier to judge from one result.
@@ -136,6 +139,12 @@ Read a file:
 
 ```bash
 codex-bridge read-file lab-win C:\Windows\System32\drivers\etc\hosts
+```
+
+Collect structured remote system information:
+
+```bash
+codex-bridge system-info lab-win
 ```
 
 List a directory:

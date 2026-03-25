@@ -119,3 +119,11 @@ class BridgeService:
             ).with_host(name)
         finally:
             provider.close()
+
+    def system_info(self, name: str, password_override: Optional[str] = None) -> RemoteOperationResult:
+        """Collect structured remote system information."""
+        provider = self.factory.create(self.get_host(name), password_override=password_override)
+        try:
+            return provider.system_info().with_host(name)
+        finally:
+            provider.close()

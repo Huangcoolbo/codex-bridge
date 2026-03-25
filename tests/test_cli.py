@@ -284,6 +284,49 @@ class CLITests(unittest.TestCase):
             password_override=None,
         )
 
+    def test_system_info_prints_structured_json_result(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_path = Path(temp_dir) / "hosts.json"
+            registry = HostRegistry(registry_path)
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            result = RemoteOperationResult.from_command(
+                "system-info",
+                CommandResult(exit_code=0, stdout="{}", stderr=""),
+                data={
+                    "computer_name": "LAB-WIN",
+                    "os_caption": "Microsoft Windows 11 Pro",
+                    "drives": [{"name": "C:", "free_bytes": 10, "size_bytes": 20}],
+                    "ipv4_addresses": [{"interface_alias": "Ethernet", "ip_address": "192.168.1.10"}],
+                },
+                host="lab-win",
+            )
+
+            with patch("remote_agent_bridge.cli.BridgeService.system_info", return_value=result) as info_mock:
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    exit_code = main(
+                        [
+                            "--registry-file",
+                            str(registry_path),
+                            "system-info",
+                            "lab-win",
+                        ]
+                    )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["operation"], "system-info")
+        self.assertEqual(payload["data"]["computer_name"], "LAB-WIN")
+        self.assertEqual(payload["data"]["drives"][0]["name"], "C:")
+        info_mock.assert_called_once_with("lab-win", password_override=None)
+
 
 if __name__ == "__main__":
     unittest.main()
