@@ -31,12 +31,12 @@ class CLITests(unittest.TestCase):
             result = RemoteOperationResult.from_command(
                 "exec",
                 CommandResult(exit_code=0, stdout="hello\n", stderr=""),
-                target={"command": "Write-Output hello"},
-                data={"command": "Write-Output hello"},
+                target={"command": "Write-Output hello", "cwd": "C:\\Temp"},
+                data={"command": "Write-Output hello", "cwd": "C:\\Temp"},
                 host="lab-win",
             )
 
-            with patch("remote_agent_bridge.cli.BridgeService.execute", return_value=result):
+            with patch("remote_agent_bridge.cli.BridgeService.execute", return_value=result) as execute_mock:
                 stdout = io.StringIO()
                 with redirect_stdout(stdout):
                     exit_code = main(
@@ -44,6 +44,8 @@ class CLITests(unittest.TestCase):
                             "--registry-file",
                             str(registry_path),
                             "exec",
+                            "--cwd",
+                            "C:\\Temp",
                             "lab-win",
                             "--",
                             "Write-Output",
@@ -56,7 +58,9 @@ class CLITests(unittest.TestCase):
         self.assertEqual(payload["operation"], "exec")
         self.assertEqual(payload["host"], "lab-win")
         self.assertEqual(payload["target"]["command"], "Write-Output hello")
+        self.assertEqual(payload["target"]["cwd"], "C:\\Temp")
         self.assertEqual(payload["stdout"], "hello\n")
+        execute_mock.assert_called_once_with("lab-win", "Write-Output hello", cwd="C:\\Temp", password_override=None)
 
 
 if __name__ == "__main__":

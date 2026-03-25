@@ -35,19 +35,32 @@ class WindowsSSHProvider(RemoteProvider):
         payload = json.loads(result.stdout)
         return RemoteOperationResult.from_command("probe", result, data=payload)
 
-    def execute(self, command: str) -> RemoteOperationResult:
+    def execute(self, command: str, cwd: str | None = None) -> RemoteOperationResult:
         """Execute a PowerShell command and return the raw result envelope."""
+        cwd_block = ""
+        if cwd:
+            cwd_block = f"""
+        $cwd = {self._ps_literal(cwd)}
+        if (-not (Test-Path -LiteralPath $cwd)) {{
+          throw "Remote working directory not found: $cwd"
+        }}
+        $cwdItem = Get-Item -LiteralPath $cwd -ErrorAction Stop
+        if (-not $cwdItem.PSIsContainer) {{
+          throw "Remote working directory is a file, not a directory: $cwd"
+        }}
+        Set-Location -LiteralPath $cwd
+        """
         script = f"""
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        $ErrorActionPreference = 'Stop'
+        $ErrorActionPreference = 'Stop'{cwd_block}
         {command}
         """
         result = self._run_powershell(script)
         return RemoteOperationResult.from_command(
             "exec",
             result,
-            target={"command": command},
-            data={"command": command},
+            target={"command": command, "cwd": cwd},
+            data={"command": command, "cwd": cwd},
         )
 
     def read_file(self, path: str, encoding: str = "utf-8") -> RemoteOperationResult:

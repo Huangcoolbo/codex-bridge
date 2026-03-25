@@ -129,7 +129,23 @@ class WindowsSSHProviderTests(unittest.TestCase):
         self.assertIn("Get-Date", decoded)
         self.assertEqual(result.operation, "exec")
         self.assertEqual(result.target["command"], "Get-Date")
+        self.assertIsNone(result.target["cwd"])
         self.assertEqual(result.stdout, "ok\n")
+
+    def test_execute_supports_remote_working_directory(self) -> None:
+        transport = FakeTransport(CommandResult(exit_code=0, stdout="ok\n", stderr=""))
+        provider = WindowsSSHProvider(transport)
+
+        result = provider.execute("Get-ChildItem", cwd="C:\\Temp")
+
+        command = transport.commands[0]
+        encoded = command.rsplit(" ", 1)[-1]
+        decoded = base64.b64decode(encoded).decode("utf-16le")
+        self.assertIn("Remote working directory not found", decoded)
+        self.assertIn("Remote working directory is a file, not a directory", decoded)
+        self.assertIn("Set-Location -LiteralPath $cwd", decoded)
+        self.assertIn("Get-ChildItem", decoded)
+        self.assertEqual(result.target["cwd"], "C:\\Temp")
 
     def test_read_file_returns_content_in_structured_data(self) -> None:
         payload = json.dumps(

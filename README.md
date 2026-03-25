@@ -107,7 +107,7 @@ For `read-file`, the bridge now returns file metadata together with text content
 
 For `list-dir`, the bridge now verifies that the target exists and is really a directory, then returns the normalized directory path, item count, and per-entry type metadata so a caller can safely chain follow-up operations.
 
-For `exec`, the bridge now forces PowerShell to stop on command errors and emits UTF-8 output, so remote failures are easier to judge from one result.
+For `exec`, the bridge now forces PowerShell to stop on command errors, emits UTF-8 output, and can optionally switch into a validated remote working directory first, so remote failures and multi-step command chaining are easier to judge from one result.
 
 For `write-file`, the bridge now checks that the parent path is really a directory, rejects writing into a directory path by mistake, and returns the final normalized path, byte count, and last write time after the file is written.
 
@@ -115,6 +115,12 @@ Run a PowerShell command:
 
 ```bash
 codex-bridge exec lab-win -- "Get-Process | Select-Object -First 5"
+```
+
+Run a PowerShell command inside a remote working directory:
+
+```bash
+codex-bridge exec --cwd C:\Temp lab-win -- "Get-ChildItem"
 ```
 
 Read a file:

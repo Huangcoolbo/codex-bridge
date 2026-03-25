@@ -36,6 +36,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = service.execute(
                 args.name,
                 command,
+                cwd=args.cwd,
                 password_override=_password_for(service, args.name),
             )
             return _print_operation_result(result)
@@ -116,6 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     exec_parser = subparsers.add_parser("exec", help="Execute a PowerShell command.")
     exec_parser.add_argument("name", help="Host name.")
+    exec_parser.add_argument("--cwd", help="Optional remote working directory before execution.")
     exec_parser.add_argument("remote_command", nargs=argparse.REMAINDER, help="Command after '--'.")
 
     read_parser = subparsers.add_parser("read-file", help="Read a text file from the remote host.")

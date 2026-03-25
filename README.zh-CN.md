@@ -108,10 +108,18 @@ powershell -ExecutionPolicy Bypass -File .\scripts\probe-host.ps1 -Name lab-win
 
 这样本地 Codex 读取完文件后，可以直接决定下一步，不必再额外补一次文件信息查询。
 
+其中 `exec` 现在还支持先切换到一个经过校验的远程工作目录再执行命令，更适合连续多步操作。
+
 在远程 Windows 上执行命令：
 
 ```bash
 codex-bridge exec lab-win -- "Get-Process | Select-Object -First 5"
+```
+
+先切到远程工作目录再执行命令：
+
+```bash
+codex-bridge exec --cwd C:\Temp lab-win -- "Get-ChildItem"
 ```
 
 读取远程文件：

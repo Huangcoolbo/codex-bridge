@@ -22,12 +22,12 @@ class FakeProvider:
             data={"computer_name": "LAB"},
         )
 
-    def execute(self, command: str) -> RemoteOperationResult:
+    def execute(self, command: str, cwd: str | None = None) -> RemoteOperationResult:
         return RemoteOperationResult.from_command(
             "exec",
             CommandResult(exit_code=0, stdout="done", stderr=""),
-            target={"command": command},
-            data={"command": command},
+            target={"command": command, "cwd": cwd},
+            data={"command": command, "cwd": cwd},
         )
 
     def read_file(self, path: str, encoding: str = "utf-8") -> RemoteOperationResult:
@@ -87,11 +87,12 @@ class BridgeServiceTests(unittest.TestCase):
             provider = FakeProvider()
             service = BridgeService(registry, factory=FakeFactory(provider))
 
-            result = service.execute("lab-win", "Get-Date")
+            result = service.execute("lab-win", "Get-Date", cwd="C:\\Temp")
 
             self.assertEqual(result.host, "lab-win")
             self.assertEqual(result.operation, "exec")
             self.assertEqual(result.target["command"], "Get-Date")
+            self.assertEqual(result.target["cwd"], "C:\\Temp")
             self.assertTrue(provider.closed)
 
 
