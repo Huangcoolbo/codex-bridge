@@ -86,15 +86,32 @@ class WindowsSSHProviderTests(unittest.TestCase):
         self.assertEqual(result.stdout, "ok\n")
 
     def test_read_file_returns_content_in_structured_data(self) -> None:
-        transport = FakeTransport(CommandResult(exit_code=0, stdout="hello world\n", stderr=""))
+        payload = json.dumps(
+            {
+                "path": "C:\\Temp\\hello.txt",
+                "encoding": "utf-8",
+                "size": 12,
+                "last_write_time": "2026-03-25T11:00:00.0000000+08:00",
+                "content_base64": base64.b64encode("hello world\n".encode("utf-8")).decode("ascii"),
+            }
+        )
+        transport = FakeTransport(CommandResult(exit_code=0, stdout=payload, stderr=""))
         provider = WindowsSSHProvider(transport)
 
         result = provider.read_file("C:\\Temp\\hello.txt", encoding="utf-8")
 
+        command = transport.commands[0]
+        encoded = command.rsplit(" ", 1)[-1]
+        decoded = base64.b64decode(encoded).decode("utf-16le")
+        self.assertIn("Test-Path -LiteralPath $path", decoded)
+        self.assertIn("content_base64", decoded)
         self.assertEqual(result.operation, "read-file")
         self.assertEqual(result.target["path"], "C:\\Temp\\hello.txt")
+        self.assertEqual(result.data["path"], "C:\\Temp\\hello.txt")
         self.assertEqual(result.data["content"], "hello world\n")
         self.assertEqual(result.data["encoding"], "utf-8")
+        self.assertEqual(result.data["size"], 12)
+        self.assertEqual(result.data["last_write_time"], "2026-03-25T11:00:00.0000000+08:00")
 
     def test_write_file_embeds_base64_payload(self) -> None:
         transport = FakeTransport(CommandResult(exit_code=0, stdout="", stderr=""))

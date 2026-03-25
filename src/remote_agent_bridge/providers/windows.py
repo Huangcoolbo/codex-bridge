@@ -46,18 +46,42 @@ class WindowsSSHProvider(RemoteProvider):
         )
 
     def read_file(self, path: str, encoding: str = "utf-8") -> RemoteOperationResult:
-        """Read a text file through PowerShell."""
+        """Read a text file through PowerShell with explicit metadata."""
         normalized_encoding = self._normalize_encoding(encoding)
         script = f"""
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        Get-Content -LiteralPath {self._ps_literal(path)} -Raw -Encoding {self._ps_literal(normalized_encoding)}
+        $path = {self._ps_literal(path)}
+        if (-not (Test-Path -LiteralPath $path)) {{
+          throw "Remote file not found: $path"
+        }}
+        $item = Get-Item -LiteralPath $path -ErrorAction Stop
+        if ($item.PSIsContainer) {{
+          throw "Remote path is a directory, not a file: $path"
+        }}
+        $content = Get-Content -LiteralPath $path -Raw -Encoding {self._ps_literal(normalized_encoding)} -ErrorAction Stop
+        $payload = [ordered]@{{
+          path = $item.FullName
+          encoding = {self._ps_literal(encoding)}
+          size = $item.Length
+          last_write_time = if ($item.LastWriteTime) {{ $item.LastWriteTime.ToString('o') }} else {{ $null }}
+          content_base64 = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($content))
+        }}
+        $payload | ConvertTo-Json -Depth 4
         """
         result = self._run_powershell(script, check=True)
+        payload = json.loads(result.stdout)
+        content = base64.b64decode(payload["content_base64"]).decode("utf-8")
         return RemoteOperationResult.from_command(
             "read-file",
             result,
             target={"path": path, "encoding": encoding},
-            data={"content": result.stdout, "encoding": encoding},
+            data={
+                "path": str(payload.get("path", path)),
+                "encoding": str(payload.get("encoding", encoding)),
+                "size": int(payload["size"]) if payload.get("size") is not None else None,
+                "last_write_time": payload.get("last_write_time"),
+                "content": content,
+            },
         )
 
     def list_dir(self, path: str) -> RemoteOperationResult:

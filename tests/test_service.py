@@ -33,9 +33,15 @@ class FakeProvider:
     def read_file(self, path: str, encoding: str = "utf-8") -> RemoteOperationResult:
         return RemoteOperationResult.from_command(
             "read-file",
-            CommandResult(exit_code=0, stdout="content", stderr=""),
+            CommandResult(exit_code=0, stdout='{"content_base64":"Y29udGVudA=="}', stderr=""),
             target={"path": path, "encoding": encoding},
-            data={"content": "content", "encoding": encoding},
+            data={
+                "path": path,
+                "content": "content",
+                "encoding": encoding,
+                "size": 7,
+                "last_write_time": None,
+            },
         )
 
     def list_dir(self, path: str) -> RemoteOperationResult:

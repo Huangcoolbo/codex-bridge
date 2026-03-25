@@ -99,6 +99,15 @@ powershell -ExecutionPolicy Bypass -File .\scripts\probe-host.ps1 -Name lab-win
 - 操作目标
 - 结构化 data
 
+其中 `read-file` 现在除了文件内容，还会一起返回：
+
+- 远程规范路径
+- 编码
+- 文件大小
+- 最后修改时间
+
+这样本地 Codex 读取完文件后，可以直接决定下一步，不必再额外补一次文件信息查询。
+
 在远程 Windows 上执行命令：
 
 ```bash

@@ -93,9 +93,17 @@ All remote operation commands now print the same JSON envelope shape:
   "stdout": "raw remote stdout",
   "stderr": "",
   "target": {"path": "C:\\Temp\\notes.txt", "encoding": "utf-8"},
-  "data": {"content": "...", "encoding": "utf-8"}
+  "data": {
+    "path": "C:\\Temp\\notes.txt",
+    "content": "...",
+    "encoding": "utf-8",
+    "size": 123,
+    "last_write_time": "2026-03-25T11:00:00+08:00"
+  }
 }
 ```
+
+For `read-file`, the bridge now returns file metadata together with text content so a caller can decide the next remote step without issuing another stat command.
 
 Run a PowerShell command:
 
