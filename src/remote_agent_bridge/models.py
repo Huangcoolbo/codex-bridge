@@ -107,6 +107,7 @@ class DirectoryEntry:
     name: str
     full_name: str
     mode: str
+    is_directory: bool
     length: Optional[int] = None
     last_write_time: Optional[str] = None
 
@@ -116,6 +117,7 @@ class DirectoryEntry:
             "name": self.name,
             "full_name": self.full_name,
             "mode": self.mode,
+            "is_directory": self.is_directory,
             "length": self.length,
             "last_write_time": self.last_write_time,
         }

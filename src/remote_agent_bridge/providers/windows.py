@@ -85,33 +85,62 @@ class WindowsSSHProvider(RemoteProvider):
         )
 
     def list_dir(self, path: str) -> RemoteOperationResult:
-        """List directory entries and normalize them into dataclasses."""
+        """List directory entries with explicit directory metadata."""
         script = f"""
-        Get-ChildItem -LiteralPath {self._ps_literal(path)} -Force |
-          Select-Object Name, FullName, Mode, Length, LastWriteTime |
-          ConvertTo-Json -Depth 4
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $path = {self._ps_literal(path)}
+        if (-not (Test-Path -LiteralPath $path)) {{
+          throw "Remote directory not found: $path"
+        }}
+        $item = Get-Item -LiteralPath $path -ErrorAction Stop
+        if (-not $item.PSIsContainer) {{
+          throw "Remote path is a file, not a directory: $path"
+        }}
+        $entries = @(
+          Get-ChildItem -LiteralPath $path -Force -ErrorAction Stop |
+            ForEach-Object {{
+              [ordered]@{{
+                Name = $_.Name
+                FullName = $_.FullName
+                Mode = $_.Mode
+                IsDirectory = $_.PSIsContainer
+                Length = if ($_.PSIsContainer) {{ $null }} else {{ $_.Length }}
+                LastWriteTime = if ($_.LastWriteTime) {{ $_.LastWriteTime.ToString('o') }} else {{ $null }}
+              }}
+            }}
+        )
+        $payload = [ordered]@{{
+          path = $item.FullName
+          item_count = $entries.Count
+          entries = $entries
+        }}
+        $payload | ConvertTo-Json -Depth 6
         """
         result = self._run_powershell(script, check=True)
-        payload = json.loads(result.stdout) if result.stdout.strip() else []
-        if isinstance(payload, dict):
-            payload = [payload]
+        payload = json.loads(result.stdout)
+        raw_entries = payload.get("entries", []) if isinstance(payload, dict) else []
         entries: List[DirectoryEntry] = [
             DirectoryEntry(
                 name=str(item["Name"]),
                 full_name=str(item["FullName"]),
                 mode=str(item["Mode"]),
+                is_directory=bool(item.get("IsDirectory", False)),
                 length=int(item["Length"]) if item.get("Length") is not None else None,
                 last_write_time=str(item["LastWriteTime"])
                 if item.get("LastWriteTime") is not None
                 else None,
             )
-            for item in payload
+            for item in raw_entries
         ]
         return RemoteOperationResult.from_command(
             "list-dir",
             result,
             target={"path": path},
-            data=entries,
+            data={
+                "path": str(payload.get("path", path)),
+                "item_count": int(payload.get("item_count", len(entries))),
+                "entries": entries,
+            },
         )
 
     def write_file(self, path: str, content: str, encoding: str = "utf-8") -> RemoteOperationResult:

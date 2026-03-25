@@ -6,6 +6,7 @@ import base64
 import json
 import unittest
 
+from remote_agent_bridge.exceptions import CommandExecutionError
 from remote_agent_bridge.models import CommandResult
 from remote_agent_bridge.providers.windows import WindowsSSHProvider
 
@@ -48,17 +49,22 @@ class WindowsSSHProviderTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.data["computer_name"], "LAB-WIN")
 
-    def test_list_dir_parses_json_array(self) -> None:
+    def test_list_dir_returns_directory_metadata_and_entries(self) -> None:
         payload = json.dumps(
-            [
-                {
-                    "Name": "file.txt",
-                    "FullName": "C:\\Temp\\file.txt",
-                    "Mode": "-a---",
-                    "Length": 42,
-                    "LastWriteTime": "2026-03-25T10:00:00",
-                }
-            ]
+            {
+                "path": "C:\\Temp",
+                "item_count": 1,
+                "entries": [
+                    {
+                        "Name": "file.txt",
+                        "FullName": "C:\\Temp\\file.txt",
+                        "Mode": "-a---",
+                        "IsDirectory": False,
+                        "Length": 42,
+                        "LastWriteTime": "2026-03-25T10:00:00.0000000+08:00",
+                    }
+                ],
+            }
         )
         transport = FakeTransport(CommandResult(exit_code=0, stdout=payload, stderr=""))
         provider = WindowsSSHProvider(transport)
@@ -66,10 +72,48 @@ class WindowsSSHProviderTests(unittest.TestCase):
         result = provider.list_dir("C:\\Temp")
 
         self.assertEqual(result.operation, "list-dir")
-        self.assertEqual(len(result.data), 1)
-        self.assertEqual(result.data[0].name, "file.txt")
+        self.assertEqual(result.data["path"], "C:\\Temp")
+        self.assertEqual(result.data["item_count"], 1)
+        self.assertEqual(len(result.data["entries"]), 1)
+        self.assertEqual(result.data["entries"][0].name, "file.txt")
+        self.assertFalse(result.data["entries"][0].is_directory)
         self.assertEqual(result.target["path"], "C:\\Temp")
         self.assertTrue(transport.commands[0].startswith("powershell -NoProfile"))
+
+        command = transport.commands[0]
+        encoded = command.rsplit(" ", 1)[-1]
+        decoded = base64.b64decode(encoded).decode("utf-16le")
+        self.assertIn("Remote directory not found", decoded)
+        self.assertIn("Remote path is a file, not a directory", decoded)
+        self.assertIn("item_count = $entries.Count", decoded)
+
+    def test_list_dir_handles_empty_directory_payload(self) -> None:
+        payload = json.dumps(
+            {
+                "path": "C:\\Empty",
+                "item_count": 0,
+                "entries": [],
+            }
+        )
+        transport = FakeTransport(CommandResult(exit_code=0, stdout=payload, stderr=""))
+        provider = WindowsSSHProvider(transport)
+
+        result = provider.list_dir("C:\\Empty")
+
+        self.assertEqual(result.data["path"], "C:\\Empty")
+        self.assertEqual(result.data["item_count"], 0)
+        self.assertEqual(result.data["entries"], [])
+
+    def test_list_dir_raises_structured_error_on_failure(self) -> None:
+        transport = FakeTransport(
+            CommandResult(exit_code=1, stdout="", stderr="Remote directory not found: C:\\Missing")
+        )
+        provider = WindowsSSHProvider(transport)
+
+        with self.assertRaises(CommandExecutionError) as context:
+            provider.list_dir("C:\\Missing")
+
+        self.assertEqual(context.exception.result.stderr, "Remote directory not found: C:\\Missing")
 
     def test_execute_wraps_script_in_encoded_command(self) -> None:
         transport = FakeTransport(CommandResult(exit_code=0, stdout="ok\n", stderr=""))

@@ -105,6 +105,8 @@ All remote operation commands now print the same JSON envelope shape:
 
 For `read-file`, the bridge now returns file metadata together with text content so a caller can decide the next remote step without issuing another stat command.
 
+For `list-dir`, the bridge now verifies that the target exists and is really a directory, then returns the normalized directory path, item count, and per-entry type metadata so a caller can safely chain follow-up operations.
+
 Run a PowerShell command:
 
 ```bash
@@ -121,6 +123,34 @@ List a directory:
 
 ```bash
 codex-bridge list-dir lab-win C:\Users\Public
+```
+
+Example `list-dir` result shape:
+
+```json
+{
+  "host": "lab-win",
+  "operation": "list-dir",
+  "success": true,
+  "exit_code": 0,
+  "stdout": "raw remote stdout",
+  "stderr": "",
+  "target": {"path": "C:\\Users\\Public"},
+  "data": {
+    "path": "C:\\Users\\Public",
+    "item_count": 2,
+    "entries": [
+      {
+        "name": "Documents",
+        "full_name": "C:\\Users\\Public\\Documents",
+        "mode": "d----",
+        "is_directory": true,
+        "length": null,
+        "last_write_time": "2026-03-25T10:00:00+08:00"
+      }
+    ]
+  }
+}
 ```
 
 Write a file:
@@ -167,6 +197,13 @@ Run tests with:
 ```bash
 $env:PYTHONPATH = "src"
 python -m unittest discover -s tests
+```
+
+Or with pytest in a fresh shell:
+
+```bash
+$env:PYTHONPATH = "src"
+python -m pytest -q
 ```
 
 ## Next Steps
