@@ -45,6 +45,8 @@ pip install -e .
 
 ### 1. 初始化本地环境
 
+这个脚本默认会用 **Python 3.13** 来创建项目环境；如果目录里已经有旧环境，它会先删掉再重建。
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\init.ps1
 ```

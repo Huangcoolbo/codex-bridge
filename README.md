@@ -39,6 +39,8 @@ Use the ready-made PowerShell scripts for common tasks.
 
 ### 1. Initialize the project environment
 
+This script uses **Python 3.13** by default. If an old environment already exists, it rebuilds it from scratch.
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\init.ps1
 ```
