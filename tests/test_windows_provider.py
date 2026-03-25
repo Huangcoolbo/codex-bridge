@@ -106,6 +106,30 @@ class WindowsSSHProviderTests(unittest.TestCase):
         self.assertEqual(result.data["item_count"], 0)
         self.assertEqual(result.data["entries"], [])
 
+    def test_list_dir_normalizes_single_entry_object_payload(self) -> None:
+        payload = json.dumps(
+            {
+                "path": "C:\\Temp",
+                "item_count": 1,
+                "entries": {
+                    "Name": "only.txt",
+                    "FullName": "C:\\Temp\\only.txt",
+                    "Mode": "-a---",
+                    "IsDirectory": False,
+                    "Length": 7,
+                    "LastWriteTime": "2026-03-25T10:00:00.0000000+08:00",
+                },
+            }
+        )
+        transport = FakeTransport(CommandResult(exit_code=0, stdout=payload, stderr=""))
+        provider = WindowsSSHProvider(transport)
+
+        result = provider.list_dir("C:\\Temp")
+
+        self.assertEqual(result.data["item_count"], 1)
+        self.assertEqual(len(result.data["entries"]), 1)
+        self.assertEqual(result.data["entries"][0].name, "only.txt")
+
     def test_list_dir_raises_structured_error_on_failure(self) -> None:
         transport = FakeTransport(
             CommandResult(exit_code=1, stdout="", stderr="Remote directory not found: C:\\Missing")
@@ -289,6 +313,33 @@ class WindowsSSHProviderTests(unittest.TestCase):
 
         self.assertEqual(context.exception.result.stderr, "Remote search path not found: C:\\Missing")
 
+    def test_search_text_normalizes_single_match_object_payload(self) -> None:
+        payload = json.dumps(
+            {
+                "path": "C:\\Logs",
+                "pattern": "needle",
+                "encoding": "utf-8",
+                "is_directory": True,
+                "recurse": True,
+                "file_count": 1,
+                "matched_file_count": 1,
+                "match_count": 1,
+                "matches": {
+                    "Path": "C:\\Logs\\app.log",
+                    "LineNumber": 4,
+                    "Line": "needle first",
+                },
+            }
+        )
+        transport = FakeTransport(CommandResult(exit_code=0, stdout=payload, stderr=""))
+        provider = WindowsSSHProvider(transport)
+
+        result = provider.search_text("C:\\Logs", "needle", recurse=True)
+
+        self.assertEqual(result.data["match_count"], 1)
+        self.assertEqual(len(result.data["matches"]), 1)
+        self.assertEqual(result.data["matches"][0].path, "C:\\Logs\\app.log")
+
     def test_system_info_returns_structured_payload(self) -> None:
         payload = json.dumps(
             {
@@ -335,6 +386,34 @@ class WindowsSSHProviderTests(unittest.TestCase):
         self.assertIn("Get-CimInstance Win32_OperatingSystem", decoded)
         self.assertIn("Get-NetIPAddress -AddressFamily IPv4", decoded)
         self.assertIn("Win32_LogicalDisk", decoded)
+
+    def test_system_info_normalizes_single_object_lists(self) -> None:
+        payload = json.dumps(
+            {
+                "computer_name": "LAB-WIN",
+                "ipv4_addresses": {
+                    "interface_alias": "Ethernet",
+                    "ip_address": "192.168.1.50",
+                    "prefix_length": 24,
+                },
+                "drives": {
+                    "name": "C:",
+                    "volume_name": "System",
+                    "size_bytes": 100,
+                    "free_bytes": 40,
+                    "file_system": "NTFS",
+                },
+            }
+        )
+        transport = FakeTransport(CommandResult(exit_code=0, stdout=payload, stderr=""))
+        provider = WindowsSSHProvider(transport)
+
+        result = provider.system_info()
+
+        self.assertEqual(len(result.data["ipv4_addresses"]), 1)
+        self.assertEqual(result.data["ipv4_addresses"][0]["ip_address"], "192.168.1.50")
+        self.assertEqual(len(result.data["drives"]), 1)
+        self.assertEqual(result.data["drives"][0]["name"], "C:")
 
 
 if __name__ == "__main__":

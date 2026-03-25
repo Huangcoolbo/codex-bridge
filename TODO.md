@@ -73,7 +73,7 @@
 
 ## 七、下一步优先顺序
 
-- [>] 继续改代码：把桥的核心能力往“稳定远程执行 PowerShell 命令”推进
+- [>] 继续改代码：把桥的核心能力往“稳定远程执行 PowerShell 命令”推进（本轮补了 PowerShell JSON 单条结果自动归一化，避免 list-dir / search-text / system-info 在单项返回时结构漂移）
 - [>] 继续优化错误提示，让失败原因更直白（下一步优先做真实远程验证）
 - [x] 补一个 pytest 默认可跑的本地测试入口（已补 pytest.ini / tests/conftest.py / 安装说明与 init.ps1 安装 pytest，并完成本地验证）
 - [x] 为 exec 增加远程工作目录能力并补测试（已发现并修正 CLI 参数顺序陷阱，pytest 已通过）
@@ -89,6 +89,6 @@
 - [ ] 用真实远程 Windows 主机验证 workflow 模板变量（命中路径回填到 read-file / exec / write-file）闭环是否稳定
 - [ ] 用真实远程 Windows 主机验证 workflow `| to-json` 过滤器，把 system-info / search-text 结果整包写入远程文件是否稳定
 - [x] 修正 workflow 模板变量对 provider 返回对象列表（如 SearchTextMatch）取值不稳定的问题，并补回归测试
-- [ ] 用真实远程 Windows 主机验证 search-text 的单文件 / 空目录 / 目录递归 / 无命中 / 路径不存在几种结果是否符合预期
-- [ ] 用真实远程 Windows 主机验证 system-info 的网络信息 / 磁盘信息 / 开机时长 / 权限环境结果是否符合预期
-- [ ] 用真实远程 Windows 主机验证 list-dir 的目录不存在 / 误传文件 / 空目录 / 普通目录四种结果是否符合预期
+- [ ] 用真实远程 Windows 主机验证 search-text 的单文件 / 单命中对象归一化 / 空目录 / 目录递归 / 无命中 / 路径不存在几种结果是否符合预期
+- [ ] 用真实远程 Windows 主机验证 system-info 的单网卡/单磁盘归一化、网络信息 / 磁盘信息 / 开机时长 / 权限环境结果是否符合预期
+- [ ] 用真实远程 Windows 主机验证 list-dir 的目录不存在 / 误传文件 / 空目录 / 单项目录对象归一化 / 普通目录几种结果是否符合预期

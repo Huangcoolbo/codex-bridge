@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import List
+from json import JSONDecodeError
+from typing import Any, List
 
 from remote_agent_bridge.adapters.base import TransportAdapter
 from remote_agent_bridge.exceptions import CommandExecutionError
@@ -32,7 +33,7 @@ class WindowsSSHProvider(RemoteProvider):
         $payload | ConvertTo-Json -Depth 4
         """
         result = self._run_powershell(script, check=True)
-        payload = json.loads(result.stdout)
+        payload = self._parse_json_stdout(result, operation="probe")
         return RemoteOperationResult.from_command("probe", result, data=payload)
 
     def execute(
@@ -92,7 +93,7 @@ class WindowsSSHProvider(RemoteProvider):
         $payload | ConvertTo-Json -Depth 4
         """
         result = self._run_powershell(script, check=True)
-        payload = json.loads(result.stdout)
+        payload = self._parse_json_stdout(result, operation="read-file")
         content = base64.b64decode(payload["content_base64"]).decode("utf-8")
         return RemoteOperationResult.from_command(
             "read-file",
@@ -140,8 +141,8 @@ class WindowsSSHProvider(RemoteProvider):
         $payload | ConvertTo-Json -Depth 6
         """
         result = self._run_powershell(script, check=True)
-        payload = json.loads(result.stdout)
-        raw_entries = payload.get("entries", []) if isinstance(payload, dict) else []
+        payload = self._parse_json_stdout(result, operation="list-dir")
+        raw_entries = self._json_array(payload.get("entries", [])) if isinstance(payload, dict) else []
         entries: List[DirectoryEntry] = [
             DirectoryEntry(
                 name=str(item["Name"]),
@@ -202,7 +203,7 @@ class WindowsSSHProvider(RemoteProvider):
         $payload | ConvertTo-Json -Depth 4
         """
         result = self._run_powershell(script, check=True)
-        payload = json.loads(result.stdout)
+        payload = self._parse_json_stdout(result, operation="write-file")
         return RemoteOperationResult.from_command(
             "write-file",
             result,
@@ -274,8 +275,8 @@ class WindowsSSHProvider(RemoteProvider):
         $payload | ConvertTo-Json -Depth 6
         """
         result = self._run_powershell(script, check=True)
-        payload = json.loads(result.stdout)
-        raw_matches = payload.get("matches", []) if isinstance(payload, dict) else []
+        payload = self._parse_json_stdout(result, operation="search-text")
+        raw_matches = self._json_array(payload.get("matches", [])) if isinstance(payload, dict) else []
         matches: List[SearchTextMatch] = [
             SearchTextMatch(
                 path=str(item["Path"]),
@@ -351,7 +352,9 @@ class WindowsSSHProvider(RemoteProvider):
         $payload | ConvertTo-Json -Depth 6
         """
         result = self._run_powershell(script, check=True)
-        payload = json.loads(result.stdout)
+        payload = self._parse_json_stdout(result, operation="system-info")
+        payload["ipv4_addresses"] = self._json_array(payload.get("ipv4_addresses", []))
+        payload["drives"] = self._json_array(payload.get("drives", []))
         return RemoteOperationResult.from_command(
             "system-info",
             result,
@@ -385,6 +388,24 @@ class WindowsSSHProvider(RemoteProvider):
     @staticmethod
     def _ps_literal(value: str) -> str:
         return "'" + value.replace("'", "''") + "'"
+
+    @staticmethod
+    def _parse_json_stdout(result: CommandResult, *, operation: str) -> dict[str, Any]:
+        try:
+            payload = json.loads(result.stdout)
+        except JSONDecodeError as error:
+            raise ValueError(f"Failed to parse JSON stdout for {operation}: {error}") from error
+        if not isinstance(payload, dict):
+            raise ValueError(f"Expected JSON object stdout for {operation}, got {type(payload).__name__}.")
+        return payload
+
+    @staticmethod
+    def _json_array(value: Any) -> List[Any]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        return [value]
 
     @staticmethod
     def _normalize_encoding(encoding: str) -> str:
