@@ -71,6 +71,19 @@ class WindowsSSHProvider(RemoteProvider):
             for item in payload
         ]
 
+    def write_file(self, path: str, content: str, encoding: str = "utf-8") -> None:
+        """Write text content to a file on the remote host."""
+        encoded_content = base64.b64encode(content.encode(self._python_encoding(encoding))).decode("ascii")
+        script = f"""
+        $parent = Split-Path -Parent {self._ps_literal(path)}
+        if ($parent) {{
+          New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }}
+        $bytes = [System.Convert]::FromBase64String({self._ps_literal(encoded_content)})
+        [System.IO.File]::WriteAllBytes({self._ps_literal(path)}, $bytes)
+        """
+        self._run_powershell(script, check=True)
+
     def close(self) -> None:
         """Close the underlying transport."""
         self.transport.close()
@@ -103,6 +116,15 @@ class WindowsSSHProvider(RemoteProvider):
             "utf-16": "unicode",
             "utf16": "unicode",
             "ascii": "ascii",
+        }
+        return aliases.get(lowered, encoding)
+
+    @staticmethod
+    def _python_encoding(encoding: str) -> str:
+        lowered = encoding.lower()
+        aliases = {
+            "utf8": "utf-8",
+            "unicode": "utf-16",
         }
         return aliases.get(lowered, encoding)
 

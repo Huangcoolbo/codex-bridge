@@ -61,6 +61,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(json.dumps([_entry_to_dict(item) for item in entries], indent=2))
             return 0
+        if args.command == "write-file":
+            content = _resolve_write_content(args)
+            service.write_file(
+                args.name,
+                args.path,
+                content=content,
+                encoding=args.encoding,
+                password_override=_password_for(service, args.name),
+            )
+            print(f"Wrote remote file: {args.path}")
+            return 0
         parser.print_help()
         return 1
     except BridgeError as error:
@@ -124,6 +135,13 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.add_argument("name", help="Host name.")
     list_parser.add_argument("path", help="Remote directory path.")
 
+    write_parser = subparsers.add_parser("write-file", help="Write a text file to the remote host.")
+    write_parser.add_argument("name", help="Host name.")
+    write_parser.add_argument("path", help="Remote file path.")
+    write_parser.add_argument("--content", help="Inline text content to write.")
+    write_parser.add_argument("--content-file", help="Local file to read and send.")
+    write_parser.add_argument("--encoding", default="utf-8", help="Text encoding to use.")
+
     return parser
 
 
@@ -180,3 +198,13 @@ def _entry_to_dict(entry: DirectoryEntry) -> dict[str, object]:
         "length": entry.length,
         "last_write_time": entry.last_write_time,
     }
+
+
+def _resolve_write_content(args: argparse.Namespace) -> str:
+    has_inline = args.content is not None
+    has_file = args.content_file is not None
+    if has_inline == has_file:
+        raise ValueError("Provide exactly one of --content or --content-file.")
+    if has_file:
+        return Path(args.content_file).read_text(encoding=args.encoding)
+    return str(args.content)

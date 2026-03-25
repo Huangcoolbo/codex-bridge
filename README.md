@@ -37,6 +37,17 @@ pip install -e .
 
 Use the ready-made PowerShell scripts for common tasks.
 
+Current helper scripts:
+
+- `scripts/init.ps1`
+- `scripts/add-windows-host.ps1`
+- `scripts/list-hosts.ps1`
+- `scripts/probe-host.ps1`
+- `scripts/exec-remote.ps1`
+- `scripts/read-remote-file.ps1`
+- `scripts/list-remote-dir.ps1`
+- `scripts/write-remote-file.ps1`
+
 ### 1. Initialize the project environment
 
 This script uses **Python 3.13** by default. If an old environment already exists, it rebuilds it from scratch.

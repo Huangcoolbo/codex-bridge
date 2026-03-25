@@ -43,6 +43,17 @@ pip install -e .
 
 常用流程现在已经整理成现成脚本了，直接运行就行。
 
+目前已经有这些脚本：
+
+- `scripts/init.ps1`
+- `scripts/add-windows-host.ps1`
+- `scripts/list-hosts.ps1`
+- `scripts/probe-host.ps1`
+- `scripts/exec-remote.ps1`
+- `scripts/read-remote-file.ps1`
+- `scripts/list-remote-dir.ps1`
+- `scripts/write-remote-file.ps1`
+
 ### 1. 初始化本地环境
 
 这个脚本默认会用 **Python 3.13** 来创建项目环境；如果目录里已经有旧环境，它会先删掉再重建。

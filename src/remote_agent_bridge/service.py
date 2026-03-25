@@ -73,3 +73,18 @@ class BridgeService:
             return provider.list_dir(path)
         finally:
             provider.close()
+
+    def write_file(
+        self,
+        name: str,
+        path: str,
+        content: str,
+        encoding: str = "utf-8",
+        password_override: Optional[str] = None,
+    ) -> None:
+        """Write text content to a remote file."""
+        provider = self.factory.create(self.get_host(name), password_override=password_override)
+        try:
+            provider.write_file(path, content=content, encoding=encoding)
+        finally:
+            provider.close()

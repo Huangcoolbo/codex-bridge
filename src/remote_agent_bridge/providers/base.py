@@ -28,5 +28,9 @@ class RemoteProvider(ABC):
         """List directory contents on the remote host."""
 
     @abstractmethod
+    def write_file(self, path: str, content: str, encoding: str = "utf-8") -> None:
+        """Write a text file to the remote host."""
+
+    @abstractmethod
     def close(self) -> None:
         """Release provider resources."""

@@ -61,6 +61,19 @@ class WindowsSSHProviderTests(unittest.TestCase):
         decoded = base64.b64decode(encoded).decode("utf-16le")
         self.assertEqual(decoded, "Get-Date")
 
+    def test_write_file_embeds_base64_payload(self) -> None:
+        transport = FakeTransport(CommandResult(exit_code=0, stdout="", stderr=""))
+        provider = WindowsSSHProvider(transport)
+
+        provider.write_file("C:\\Temp\\hello.txt", "hello world", encoding="utf-8")
+
+        command = transport.commands[0]
+        encoded = command.rsplit(" ", 1)[-1]
+        decoded = base64.b64decode(encoded).decode("utf-16le")
+        self.assertIn("WriteAllBytes", decoded)
+        self.assertIn("aGVsbG8gd29ybGQ=", decoded)
+        self.assertIn("C:\\Temp\\hello.txt", decoded)
+
 
 if __name__ == "__main__":
     unittest.main()
