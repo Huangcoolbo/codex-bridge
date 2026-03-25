@@ -60,6 +60,28 @@ class FakeProvider:
             data={"path": path, "encoding": encoding, "bytes_written": len(content.encode(encoding))},
         )
 
+    def search_text(
+        self,
+        path: str,
+        pattern: str,
+        *,
+        encoding: str = "utf-8",
+        recurse: bool = False,
+    ) -> RemoteOperationResult:
+        return RemoteOperationResult.from_command(
+            "search-text",
+            CommandResult(exit_code=0, stdout="{}", stderr=""),
+            target={"path": path, "pattern": pattern, "encoding": encoding, "recurse": recurse},
+            data={
+                "path": path,
+                "pattern": pattern,
+                "encoding": encoding,
+                "recurse": recurse,
+                "match_count": 1,
+                "matches": [{"path": path, "line_number": 3, "line": "needle here"}],
+            },
+        )
+
     def close(self) -> None:
         self.closed = True
 
@@ -93,6 +115,35 @@ class BridgeServiceTests(unittest.TestCase):
             self.assertEqual(result.operation, "exec")
             self.assertEqual(result.target["command"], "Get-Date")
             self.assertEqual(result.target["cwd"], "C:\\Temp")
+            self.assertTrue(provider.closed)
+
+    def test_search_text_tags_result_with_host(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry = HostRegistry(Path(temp_dir) / "hosts.json")
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            provider = FakeProvider()
+            service = BridgeService(registry, factory=FakeFactory(provider))
+
+            result = service.search_text(
+                "lab-win",
+                "C:\\Temp",
+                "needle",
+                encoding="utf-8",
+                recurse=True,
+            )
+
+            self.assertEqual(result.host, "lab-win")
+            self.assertEqual(result.operation, "search-text")
+            self.assertEqual(result.target["path"], "C:\\Temp")
+            self.assertEqual(result.target["pattern"], "needle")
+            self.assertTrue(result.target["recurse"])
             self.assertTrue(provider.closed)
 
 

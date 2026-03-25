@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import Any, List
+from typing import List
 
 from remote_agent_bridge.adapters.base import TransportAdapter
 from remote_agent_bridge.exceptions import CommandExecutionError
-from remote_agent_bridge.models import CommandResult, DirectoryEntry, RemoteOperationResult
+from remote_agent_bridge.models import CommandResult, DirectoryEntry, RemoteOperationResult, SearchTextMatch
 
 from .base import RemoteProvider
 
@@ -209,6 +209,90 @@ class WindowsSSHProvider(RemoteProvider):
                 if payload.get("bytes_written") is not None
                 else len(content.encode(python_encoding)),
                 "last_write_time": payload.get("last_write_time"),
+            },
+        )
+
+    def search_text(
+        self,
+        path: str,
+        pattern: str,
+        *,
+        encoding: str = "utf-8",
+        recurse: bool = False,
+    ) -> RemoteOperationResult:
+        """Search for literal text inside one remote file or a directory tree."""
+        normalized_encoding = self._normalize_encoding(encoding)
+        recurse_literal = "$true" if recurse else "$false"
+        script = f"""
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $path = {self._ps_literal(path)}
+        $pattern = {self._ps_literal(pattern)}
+        $recurse = {recurse_literal}
+        if (-not (Test-Path -LiteralPath $path)) {{
+          throw "Remote search path not found: $path"
+        }}
+        $item = Get-Item -LiteralPath $path -ErrorAction Stop
+        if ($item.PSIsContainer) {{
+          if ($recurse) {{
+            $files = @(Get-ChildItem -LiteralPath $path -File -Force -Recurse -ErrorAction Stop)
+          }} else {{
+            $files = @(Get-ChildItem -LiteralPath $path -File -Force -ErrorAction Stop)
+          }}
+        }} else {{
+          $files = @($item)
+        }}
+        $matches = @()
+        if ($files.Count -gt 0) {{
+          $matches = @(
+            Select-String -LiteralPath $files.FullName -Pattern $pattern -Encoding {self._ps_literal(normalized_encoding)} -SimpleMatch -ErrorAction Stop |
+              ForEach-Object {{
+                [ordered]@{{
+                  Path = $_.Path
+                  LineNumber = $_.LineNumber
+                  Line = $_.Line
+                }}
+              }}
+          )
+        }}
+        $matchedFiles = @($matches | ForEach-Object {{ $_.Path }} | Sort-Object -Unique)
+        $payload = [ordered]@{{
+          path = $item.FullName
+          pattern = $pattern
+          encoding = {self._ps_literal(encoding)}
+          is_directory = $item.PSIsContainer
+          recurse = if ($item.PSIsContainer) {{ $recurse }} else {{ $false }}
+          file_count = $files.Count
+          matched_file_count = $matchedFiles.Count
+          match_count = $matches.Count
+          matches = $matches
+        }}
+        $payload | ConvertTo-Json -Depth 6
+        """
+        result = self._run_powershell(script, check=True)
+        payload = json.loads(result.stdout)
+        raw_matches = payload.get("matches", []) if isinstance(payload, dict) else []
+        matches: List[SearchTextMatch] = [
+            SearchTextMatch(
+                path=str(item["Path"]),
+                line_number=int(item["LineNumber"]),
+                line=str(item["Line"]),
+            )
+            for item in raw_matches
+        ]
+        return RemoteOperationResult.from_command(
+            "search-text",
+            result,
+            target={"path": path, "pattern": pattern, "encoding": encoding, "recurse": recurse},
+            data={
+                "path": str(payload.get("path", path)),
+                "pattern": str(payload.get("pattern", pattern)),
+                "encoding": str(payload.get("encoding", encoding)),
+                "is_directory": bool(payload.get("is_directory", False)),
+                "recurse": bool(payload.get("recurse", recurse)),
+                "file_count": int(payload.get("file_count", 0)),
+                "matched_file_count": int(payload.get("matched_file_count", 0)),
+                "match_count": int(payload.get("match_count", len(matches))),
+                "matches": matches,
             },
         )
 

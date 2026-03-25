@@ -17,10 +17,11 @@
 - 保存远程主机资料
 - 列出已经保存的主机
 - 检查远程 Windows 是否能连通
-- 在远程 Windows 上执行命令
+- 在远程 Windows 上执行命令，支持直接传命令或读取本地 PowerShell 脚本文件
 - 读取远程文件
 - 列出远程目录内容
 - 写入远程文件
+- 在远程文件或目录树里搜索文本
 - 所有远程操作返回统一 JSON 结果结构，方便后续继续处理
 
 ## 使用前提
@@ -55,6 +56,7 @@ pip install -e .
 - `scripts/read-remote-file.ps1`
 - `scripts/list-remote-dir.ps1`
 - `scripts/write-remote-file.ps1`
+- `scripts/search-remote-text.ps1`
 
 ### 1. 初始化本地环境
 
@@ -108,7 +110,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\probe-host.ps1 -Name lab-win
 
 这样本地 Codex 读取完文件后，可以直接决定下一步，不必再额外补一次文件信息查询。
 
-其中 `exec` 现在还支持先切换到一个经过校验的远程工作目录再执行命令，更适合连续多步操作。
+其中 `search-text` 现在会在单个远程文件或整个目录树里做字面量文本搜索，并返回带文件路径和行号的结构化匹配结果，方便本地 Codex 先搜再决定下一步读哪个文件。
+
+其中 `exec` 现在还支持先切换到一个经过校验的远程工作目录再执行命令，也支持先读取本地 PowerShell 脚本文件再发送到远程执行，更适合连续多步操作。
 
 在远程 Windows 上执行命令：
 
@@ -122,6 +126,12 @@ codex-bridge exec lab-win -- "Get-Process | Select-Object -First 5"
 codex-bridge exec --cwd C:\Temp lab-win -- "Get-ChildItem"
 ```
 
+把本地 PowerShell 脚本文件发送到远程执行：
+
+```bash
+codex-bridge exec --cwd C:\Temp --command-file .\ops.ps1 lab-win
+```
+
 读取远程文件：
 
 ```bash
@@ -133,6 +143,23 @@ codex-bridge read-file lab-win C:\Windows\System32\drivers\etc\hosts
 ```bash
 codex-bridge list-dir lab-win C:\Users\Public
 ```
+
+在单个文件或目录树里搜索文本：
+
+```bash
+codex-bridge search-text lab-win C:\Logs ERROR --recurse
+```
+
+`search-text` 返回的结构里会带上：
+
+- 实际搜索的路径
+- 是否是目录
+- 是否递归
+- 扫描了多少个文件
+- 命中了多少处
+- 每一处命中的文件路径、行号、文本内容
+
+这样本地侧可以先搜，再读真正需要的文件，减少盲读和试错。
 
 写入远程文件：
 

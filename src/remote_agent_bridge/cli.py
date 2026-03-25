@@ -63,6 +63,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 password_override=_password_for(service, args.name),
             )
             return _print_operation_result(result)
+        if args.command == "search-text":
+            result = service.search_text(
+                args.name,
+                args.path,
+                args.pattern,
+                encoding=args.encoding,
+                recurse=args.recurse,
+                password_override=_password_for(service, args.name),
+            )
+            return _print_operation_result(result)
         parser.print_help()
         return 1
     except BridgeError as error:
@@ -137,6 +147,17 @@ def build_parser() -> argparse.ArgumentParser:
     write_parser.add_argument("--content", help="Inline text content to write.")
     write_parser.add_argument("--content-file", help="Local file to read and send.")
     write_parser.add_argument("--encoding", default="utf-8", help="Text encoding to use.")
+
+    search_parser = subparsers.add_parser("search-text", help="Search for text in a remote file or directory.")
+    search_parser.add_argument("name", help="Host name.")
+    search_parser.add_argument("path", help="Remote file or directory path.")
+    search_parser.add_argument("pattern", help="Literal text pattern to search for.")
+    search_parser.add_argument("--encoding", default="utf-8", help="Text encoding to use when reading files.")
+    search_parser.add_argument(
+        "--recurse",
+        action="store_true",
+        help="When the target is a directory, search all descendant files.",
+    )
 
     return parser
 

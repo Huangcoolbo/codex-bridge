@@ -31,5 +31,16 @@ class RemoteProvider(ABC):
         """Write a text file to the remote host."""
 
     @abstractmethod
+    def search_text(
+        self,
+        path: str,
+        pattern: str,
+        *,
+        encoding: str = "utf-8",
+        recurse: bool = False,
+    ) -> RemoteOperationResult:
+        """Search for text inside one remote file or a directory tree."""
+
+    @abstractmethod
     def close(self) -> None:
         """Release provider resources."""

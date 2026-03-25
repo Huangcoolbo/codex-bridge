@@ -92,3 +92,25 @@ class BridgeService:
             return provider.write_file(path, content=content, encoding=encoding).with_host(name)
         finally:
             provider.close()
+
+    def search_text(
+        self,
+        name: str,
+        path: str,
+        pattern: str,
+        *,
+        encoding: str = "utf-8",
+        recurse: bool = False,
+        password_override: Optional[str] = None,
+    ) -> RemoteOperationResult:
+        """Search for text inside one remote file or a directory tree."""
+        provider = self.factory.create(self.get_host(name), password_override=password_override)
+        try:
+            return provider.search_text(
+                path,
+                pattern,
+                encoding=encoding,
+                recurse=recurse,
+            ).with_host(name)
+        finally:
+            provider.close()

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 AuthMethod = Literal["password", "key"]
-OperationName = Literal["probe", "exec", "read-file", "list-dir", "write-file"]
+OperationName = Literal["probe", "exec", "read-file", "list-dir", "write-file", "search-text"]
 
 
 @dataclass
@@ -120,6 +120,23 @@ class DirectoryEntry:
             "is_directory": self.is_directory,
             "length": self.length,
             "last_write_time": self.last_write_time,
+        }
+
+
+@dataclass
+class SearchTextMatch:
+    """One text match returned from a remote search operation."""
+
+    path: str
+    line_number: int
+    line: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize the match to a JSON-compatible dict."""
+        return {
+            "path": self.path,
+            "line_number": self.line_number,
+            "line": self.line,
         }
 
 

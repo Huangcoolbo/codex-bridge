@@ -13,8 +13,8 @@ The first concrete implementation is Windows over OpenSSH. The structure is inte
 
 - host profile registry stored locally in `data/hosts.json`
 - provider/adapter architecture with a Windows provider over an SSH transport
-- CLI commands for `host add`, `host list`, `probe`, `exec`, `read-file`, `list-dir`, and `write-file`, with `exec` supporting inline commands or a local PowerShell script file
-- consistent JSON result envelope across `probe`, `exec`, `read-file`, `list-dir`, and `write-file`
+- CLI commands for `host add`, `host list`, `probe`, `exec`, `read-file`, `list-dir`, `write-file`, and `search-text`, with `exec` supporting inline commands or a local PowerShell script file
+- consistent JSON result envelope across `probe`, `exec`, `read-file`, `list-dir`, `write-file`, and `search-text`
 - password or key-based SSH auth in the host schema
 - runtime password prompting when the profile omits a stored password
 - basic tests for storage, service, CLI, and Windows provider behavior
@@ -48,6 +48,7 @@ Current helper scripts:
 - `scripts/read-remote-file.ps1`
 - `scripts/list-remote-dir.ps1`
 - `scripts/write-remote-file.ps1`
+- `scripts/search-remote-text.ps1`
 
 ### 1. Initialize the project environment
 
@@ -111,6 +112,8 @@ For `exec`, the bridge now forces PowerShell to stop on command errors, emits UT
 
 For `write-file`, the bridge now checks that the parent path is really a directory, rejects writing into a directory path by mistake, and returns the final normalized path, byte count, and last write time after the file is written.
 
+For `search-text`, the bridge can now search one remote file or a whole directory tree for a literal text pattern, and returns file count, match count, and matched lines so a caller can decide which remote file to inspect next.
+
 Run a PowerShell command:
 
 ```bash
@@ -169,6 +172,47 @@ Write a file:
 codex-bridge write-file lab-win C:\Temp\notes.txt --content "hello from codex-bridge"
 ```
 
+Search text in one remote file or directory:
+
+```bash
+codex-bridge search-text lab-win C:\Logs ERROR --recurse
+```
+
+Example `search-text` result shape:
+
+```json
+{
+  "host": "lab-win",
+  "operation": "search-text",
+  "success": true,
+  "exit_code": 0,
+  "stdout": "raw remote stdout",
+  "stderr": "",
+  "target": {
+    "path": "C:\\Logs",
+    "pattern": "ERROR",
+    "encoding": "utf-8",
+    "recurse": true
+  },
+  "data": {
+    "path": "C:\\Logs",
+    "is_directory": true,
+    "recurse": true,
+    "pattern": "ERROR",
+    "encoding": "utf-8",
+    "file_count": 2,
+    "match_count": 1,
+    "matches": [
+      {
+        "path": "C:\\Logs\\app.log",
+        "line_number": 12,
+        "line": "ERROR failed to connect"
+      }
+    ]
+  }
+}
+```
+
 ## Registry Format
 
 Host profiles live in `data/hosts.json` and follow this shape:
@@ -222,5 +266,6 @@ python -m pytest -q
 - add richer Windows operations such as upload, download, and service control
 - support alternate config locations and secret backends
 - add Android transport and provider implementations
+
 
 

@@ -218,6 +218,63 @@ class WindowsSSHProviderTests(unittest.TestCase):
             "Remote write target is a directory, not a file: C:\\Temp",
         )
 
+    def test_search_text_returns_structured_matches(self) -> None:
+        payload = json.dumps(
+            {
+                "path": "C:\\Logs",
+                "pattern": "needle",
+                "encoding": "utf-8",
+                "is_directory": True,
+                "recurse": True,
+                "file_count": 2,
+                "matched_file_count": 1,
+                "match_count": 2,
+                "matches": [
+                    {
+                        "Path": "C:\\Logs\\app.log",
+                        "LineNumber": 4,
+                        "Line": "needle first",
+                    },
+                    {
+                        "Path": "C:\\Logs\\app.log",
+                        "LineNumber": 9,
+                        "Line": "needle second",
+                    },
+                ],
+            }
+        )
+        transport = FakeTransport(CommandResult(exit_code=0, stdout=payload, stderr=""))
+        provider = WindowsSSHProvider(transport)
+
+        result = provider.search_text("C:\\Logs", "needle", recurse=True)
+
+        command = transport.commands[0]
+        encoded = command.rsplit(" ", 1)[-1]
+        decoded = base64.b64decode(encoded).decode("utf-16le")
+        self.assertIn("Remote search path not found", decoded)
+        self.assertIn("Select-String", decoded)
+        self.assertIn("-Recurse", decoded)
+        self.assertIn("-SimpleMatch", decoded)
+        self.assertEqual(result.operation, "search-text")
+        self.assertEqual(result.target["path"], "C:\\Logs")
+        self.assertEqual(result.target["pattern"], "needle")
+        self.assertTrue(result.target["recurse"])
+        self.assertEqual(result.data["match_count"], 2)
+        self.assertEqual(result.data["matched_file_count"], 1)
+        self.assertEqual(result.data["matches"][0].path, "C:\\Logs\\app.log")
+        self.assertEqual(result.data["matches"][0].line_number, 4)
+
+    def test_search_text_raises_structured_error_on_failure(self) -> None:
+        transport = FakeTransport(
+            CommandResult(exit_code=1, stdout="", stderr="Remote search path not found: C:\\Missing")
+        )
+        provider = WindowsSSHProvider(transport)
+
+        with self.assertRaises(CommandExecutionError) as context:
+            provider.search_text("C:\\Missing", "needle")
+
+        self.assertEqual(context.exception.result.stderr, "Remote search path not found: C:\\Missing")
+
 
 if __name__ == "__main__":
     unittest.main()
