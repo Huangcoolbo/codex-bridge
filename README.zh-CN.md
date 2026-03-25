@@ -20,6 +20,8 @@
 - 在远程 Windows 上执行命令
 - 读取远程文件
 - 列出远程目录内容
+- 写入远程文件
+- 所有远程操作返回统一 JSON 结果结构，方便后续继续处理
 
 ## 使用前提
 
@@ -87,22 +89,38 @@ powershell -ExecutionPolicy Bypass -File .\scripts\probe-host.ps1 -Name lab-win
 
 ### 5. 如果你想直接用命令行
 
+现在这些远程操作命令都会返回统一的 JSON 结构，里面会带上：
+
+- 主机名
+- 操作类型
+- 是否成功
+- 退出码
+- 原始 stdout/stderr
+- 操作目标
+- 结构化 data
+
 在远程 Windows 上执行命令：
 
 ```bash
-remote-agent-bridge exec lab-win -- "Get-Process | Select-Object -First 5"
+codex-bridge exec lab-win -- "Get-Process | Select-Object -First 5"
 ```
 
 读取远程文件：
 
 ```bash
-remote-agent-bridge read-file lab-win C:\Windows\System32\drivers\etc\hosts
+codex-bridge read-file lab-win C:\Windows\System32\drivers\etc\hosts
 ```
 
 查看远程目录：
 
 ```bash
-remote-agent-bridge list-dir lab-win C:\Users\Public
+codex-bridge list-dir lab-win C:\Users\Public
+```
+
+写入远程文件：
+
+```bash
+codex-bridge write-file lab-win C:\Temp\notes.txt --content "hello from codex-bridge"
 ```
 
 ## 主机资料保存在哪里

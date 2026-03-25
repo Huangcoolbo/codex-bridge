@@ -57,7 +57,7 @@ Local Codex is the brain. It does not operate the remote system directly; it act
 
 ---
 
-### Module 2: The Bridge (`remote-agent-bridge`)
+### Module 2: The Bridge (`codex-bridge`)
 
 Responsibilities:
 
@@ -266,6 +266,6 @@ If the code exists but the end-to-end path has not been proven, the stage is not
 
 ## 11. One-Sentence Summary
 
-The real goal of `remote-agent-bridge` v1 is:
+The real goal of `codex-bridge` v1 is:
 
 > **extend the operating reach of local Codex to remote Windows through a bridge, using remote PowerShell as the first execution layer.**

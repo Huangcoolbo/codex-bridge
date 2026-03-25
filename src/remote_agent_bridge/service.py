@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import List, Optional
 
 from remote_agent_bridge.exceptions import ProfileNotFoundError
 from remote_agent_bridge.factory import ProviderFactory
-from remote_agent_bridge.models import CommandResult, DirectoryEntry, HostProfile
+from remote_agent_bridge.models import HostProfile, RemoteOperationResult
 from remote_agent_bridge.storage import HostRegistry
 
 
@@ -32,21 +32,21 @@ class BridgeService:
             raise ProfileNotFoundError("Host '{0}' is not registered.".format(name))
         return profile
 
-    def probe(self, name: str, password_override: Optional[str] = None) -> Any:
+    def probe(self, name: str, password_override: Optional[str] = None) -> RemoteOperationResult:
         """Probe a host for metadata."""
         provider = self.factory.create(self.get_host(name), password_override=password_override)
         try:
-            return provider.probe()
+            return provider.probe().with_host(name)
         finally:
             provider.close()
 
     def execute(
         self, name: str, command: str, password_override: Optional[str] = None
-    ) -> CommandResult:
+    ) -> RemoteOperationResult:
         """Execute a remote command on a host."""
         provider = self.factory.create(self.get_host(name), password_override=password_override)
         try:
-            return provider.execute(command)
+            return provider.execute(command).with_host(name)
         finally:
             provider.close()
 
@@ -56,21 +56,21 @@ class BridgeService:
         path: str,
         encoding: str = "utf-8",
         password_override: Optional[str] = None,
-    ) -> str:
+    ) -> RemoteOperationResult:
         """Read a remote file as text."""
         provider = self.factory.create(self.get_host(name), password_override=password_override)
         try:
-            return provider.read_file(path, encoding=encoding)
+            return provider.read_file(path, encoding=encoding).with_host(name)
         finally:
             provider.close()
 
     def list_dir(
         self, name: str, path: str, password_override: Optional[str] = None
-    ) -> List[DirectoryEntry]:
+    ) -> RemoteOperationResult:
         """List a remote directory."""
         provider = self.factory.create(self.get_host(name), password_override=password_override)
         try:
-            return provider.list_dir(path)
+            return provider.list_dir(path).with_host(name)
         finally:
             provider.close()
 
@@ -81,10 +81,10 @@ class BridgeService:
         content: str,
         encoding: str = "utf-8",
         password_override: Optional[str] = None,
-    ) -> None:
+    ) -> RemoteOperationResult:
         """Write text content to a remote file."""
         provider = self.factory.create(self.get_host(name), password_override=password_override)
         try:
-            provider.write_file(path, content=content, encoding=encoding)
+            return provider.write_file(path, content=content, encoding=encoding).with_host(name)
         finally:
             provider.close()

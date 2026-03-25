@@ -57,7 +57,7 @@
 
 ---
 
-### 模块二：桥（remote-agent-bridge）
+### 模块二：桥（codex-bridge）
 
 职责：
 
@@ -266,6 +266,6 @@
 
 ## 11. 一句话总结
 
-`remote-agent-bridge` 第一阶段的真正目标是：
+`codex-bridge` 第一阶段的真正目标是：
 
 > **把本地 Codex 的操作能力，通过桥延伸到远程 Windows，让远程 PowerShell 成为第一版执行端。**

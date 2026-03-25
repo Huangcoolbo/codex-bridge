@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Sequence
 
 from remote_agent_bridge.exceptions import BridgeError, CommandExecutionError
-from remote_agent_bridge.models import AuthConfig, DirectoryEntry, HostProfile
+from remote_agent_bridge.models import AuthConfig, HostProfile, RemoteOperationResult
 from remote_agent_bridge.service import BridgeService
 from remote_agent_bridge.storage import HostRegistry
 
@@ -28,8 +28,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _handle_host_command(service, args)
         if args.command == "probe":
             payload = service.probe(args.name, password_override=_password_for(service, args.name))
-            print(json.dumps(payload, indent=2))
-            return 0
+            return _print_operation_result(payload)
         if args.command == "exec":
             command = " ".join(args.remote_command).strip()
             if not command:
@@ -39,39 +38,32 @@ def main(argv: Sequence[str] | None = None) -> int:
                 command,
                 password_override=_password_for(service, args.name),
             )
-            if result.stdout:
-                print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
-            if result.stderr:
-                print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
-            return result.exit_code
+            return _print_operation_result(result)
         if args.command == "read-file":
-            contents = service.read_file(
+            result = service.read_file(
                 args.name,
                 args.path,
                 encoding=args.encoding,
                 password_override=_password_for(service, args.name),
             )
-            print(contents, end="" if contents.endswith("\n") else "\n")
-            return 0
+            return _print_operation_result(result)
         if args.command == "list-dir":
-            entries = service.list_dir(
+            result = service.list_dir(
                 args.name,
                 args.path,
                 password_override=_password_for(service, args.name),
             )
-            print(json.dumps([_entry_to_dict(item) for item in entries], indent=2))
-            return 0
+            return _print_operation_result(result)
         if args.command == "write-file":
             content = _resolve_write_content(args)
-            service.write_file(
+            result = service.write_file(
                 args.name,
                 args.path,
                 content=content,
                 encoding=args.encoding,
                 password_override=_password_for(service, args.name),
             )
-            print(f"Wrote remote file: {args.path}")
-            return 0
+            return _print_operation_result(result)
         parser.print_help()
         return 1
     except BridgeError as error:
@@ -190,14 +182,9 @@ def _password_for(service: BridgeService, host_name: str) -> str | None:
     return None
 
 
-def _entry_to_dict(entry: DirectoryEntry) -> dict[str, object]:
-    return {
-        "name": entry.name,
-        "full_name": entry.full_name,
-        "mode": entry.mode,
-        "length": entry.length,
-        "last_write_time": entry.last_write_time,
-    }
+def _print_operation_result(result: RemoteOperationResult) -> int:
+    print(json.dumps(result.to_dict(), indent=2))
+    return result.exit_code
 
 
 def _resolve_write_content(args: argparse.Namespace) -> str:

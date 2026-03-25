@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import base64
 import json
-from typing import Any
+from typing import Any, List
 
 from remote_agent_bridge.adapters.base import TransportAdapter
 from remote_agent_bridge.exceptions import CommandExecutionError
-from remote_agent_bridge.models import CommandResult, DirectoryEntry
+from remote_agent_bridge.models import CommandResult, DirectoryEntry, RemoteOperationResult
 
 from .base import RemoteProvider
 
@@ -19,7 +19,7 @@ class WindowsSSHProvider(RemoteProvider):
     def __init__(self, transport: TransportAdapter) -> None:
         self.transport = transport
 
-    def probe(self) -> dict[str, Any]:
+    def probe(self) -> RemoteOperationResult:
         """Collect basic Windows host metadata."""
         script = """
         $payload = [ordered]@{
@@ -32,22 +32,35 @@ class WindowsSSHProvider(RemoteProvider):
         $payload | ConvertTo-Json -Depth 4
         """
         result = self._run_powershell(script, check=True)
-        return json.loads(result.stdout)
+        payload = json.loads(result.stdout)
+        return RemoteOperationResult.from_command("probe", result, data=payload)
 
-    def execute(self, command: str) -> CommandResult:
-        """Execute a PowerShell command and return the raw result."""
-        return self._run_powershell(command)
+    def execute(self, command: str) -> RemoteOperationResult:
+        """Execute a PowerShell command and return the raw result envelope."""
+        result = self._run_powershell(command)
+        return RemoteOperationResult.from_command(
+            "exec",
+            result,
+            target={"command": command},
+            data={"command": command},
+        )
 
-    def read_file(self, path: str, encoding: str = "utf-8") -> str:
+    def read_file(self, path: str, encoding: str = "utf-8") -> RemoteOperationResult:
         """Read a text file through PowerShell."""
+        normalized_encoding = self._normalize_encoding(encoding)
         script = f"""
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-        Get-Content -LiteralPath {self._ps_literal(path)} -Raw -Encoding {self._ps_literal(self._normalize_encoding(encoding))}
+        Get-Content -LiteralPath {self._ps_literal(path)} -Raw -Encoding {self._ps_literal(normalized_encoding)}
         """
         result = self._run_powershell(script, check=True)
-        return result.stdout
+        return RemoteOperationResult.from_command(
+            "read-file",
+            result,
+            target={"path": path, "encoding": encoding},
+            data={"content": result.stdout, "encoding": encoding},
+        )
 
-    def list_dir(self, path: str) -> list[DirectoryEntry]:
+    def list_dir(self, path: str) -> RemoteOperationResult:
         """List directory entries and normalize them into dataclasses."""
         script = f"""
         Get-ChildItem -LiteralPath {self._ps_literal(path)} -Force |
@@ -58,7 +71,7 @@ class WindowsSSHProvider(RemoteProvider):
         payload = json.loads(result.stdout) if result.stdout.strip() else []
         if isinstance(payload, dict):
             payload = [payload]
-        return [
+        entries: List[DirectoryEntry] = [
             DirectoryEntry(
                 name=str(item["Name"]),
                 full_name=str(item["FullName"]),
@@ -70,8 +83,14 @@ class WindowsSSHProvider(RemoteProvider):
             )
             for item in payload
         ]
+        return RemoteOperationResult.from_command(
+            "list-dir",
+            result,
+            target={"path": path},
+            data=entries,
+        )
 
-    def write_file(self, path: str, content: str, encoding: str = "utf-8") -> None:
+    def write_file(self, path: str, content: str, encoding: str = "utf-8") -> RemoteOperationResult:
         """Write text content to a file on the remote host."""
         encoded_content = base64.b64encode(content.encode(self._python_encoding(encoding))).decode("ascii")
         script = f"""
@@ -82,7 +101,13 @@ class WindowsSSHProvider(RemoteProvider):
         $bytes = [System.Convert]::FromBase64String({self._ps_literal(encoded_content)})
         [System.IO.File]::WriteAllBytes({self._ps_literal(path)}, $bytes)
         """
-        self._run_powershell(script, check=True)
+        result = self._run_powershell(script, check=True)
+        return RemoteOperationResult.from_command(
+            "write-file",
+            result,
+            target={"path": path, "encoding": encoding},
+            data={"path": path, "encoding": encoding, "bytes_written": len(content.encode(self._python_encoding(encoding)))},
+        )
 
     def close(self) -> None:
         """Close the underlying transport."""
@@ -127,4 +152,3 @@ class WindowsSSHProvider(RemoteProvider):
             "unicode": "utf-16",
         }
         return aliases.get(lowered, encoding)
-

@@ -29,6 +29,25 @@ class FakeTransport:
 class WindowsSSHProviderTests(unittest.TestCase):
     """Verify command formatting and result parsing."""
 
+    def test_probe_returns_structured_result(self) -> None:
+        payload = json.dumps(
+            {
+                "computer_name": "LAB-WIN",
+                "current_user": "LAB\\admin",
+                "os_caption": "Microsoft Windows 11 Pro",
+                "os_version": "10.0.26100.0",
+                "powershell_version": "5.1.26100.1",
+            }
+        )
+        transport = FakeTransport(CommandResult(exit_code=0, stdout=payload, stderr=""))
+        provider = WindowsSSHProvider(transport)
+
+        result = provider.probe()
+
+        self.assertEqual(result.operation, "probe")
+        self.assertTrue(result.success)
+        self.assertEqual(result.data["computer_name"], "LAB-WIN")
+
     def test_list_dir_parses_json_array(self) -> None:
         payload = json.dumps(
             [
@@ -44,28 +63,44 @@ class WindowsSSHProviderTests(unittest.TestCase):
         transport = FakeTransport(CommandResult(exit_code=0, stdout=payload, stderr=""))
         provider = WindowsSSHProvider(transport)
 
-        entries = provider.list_dir("C:\\Temp")
+        result = provider.list_dir("C:\\Temp")
 
-        self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0].name, "file.txt")
+        self.assertEqual(result.operation, "list-dir")
+        self.assertEqual(len(result.data), 1)
+        self.assertEqual(result.data[0].name, "file.txt")
+        self.assertEqual(result.target["path"], "C:\\Temp")
         self.assertTrue(transport.commands[0].startswith("powershell -NoProfile"))
 
     def test_execute_wraps_script_in_encoded_command(self) -> None:
-        transport = FakeTransport(CommandResult(exit_code=0, stdout="", stderr=""))
+        transport = FakeTransport(CommandResult(exit_code=0, stdout="ok\n", stderr=""))
         provider = WindowsSSHProvider(transport)
 
-        provider.execute("Get-Date")
+        result = provider.execute("Get-Date")
 
         command = transport.commands[0]
         encoded = command.rsplit(" ", 1)[-1]
         decoded = base64.b64decode(encoded).decode("utf-16le")
         self.assertEqual(decoded, "Get-Date")
+        self.assertEqual(result.operation, "exec")
+        self.assertEqual(result.target["command"], "Get-Date")
+        self.assertEqual(result.stdout, "ok\n")
+
+    def test_read_file_returns_content_in_structured_data(self) -> None:
+        transport = FakeTransport(CommandResult(exit_code=0, stdout="hello world\n", stderr=""))
+        provider = WindowsSSHProvider(transport)
+
+        result = provider.read_file("C:\\Temp\\hello.txt", encoding="utf-8")
+
+        self.assertEqual(result.operation, "read-file")
+        self.assertEqual(result.target["path"], "C:\\Temp\\hello.txt")
+        self.assertEqual(result.data["content"], "hello world\n")
+        self.assertEqual(result.data["encoding"], "utf-8")
 
     def test_write_file_embeds_base64_payload(self) -> None:
         transport = FakeTransport(CommandResult(exit_code=0, stdout="", stderr=""))
         provider = WindowsSSHProvider(transport)
 
-        provider.write_file("C:\\Temp\\hello.txt", "hello world", encoding="utf-8")
+        result = provider.write_file("C:\\Temp\\hello.txt", "hello world", encoding="utf-8")
 
         command = transport.commands[0]
         encoded = command.rsplit(" ", 1)[-1]
@@ -73,6 +108,8 @@ class WindowsSSHProviderTests(unittest.TestCase):
         self.assertIn("WriteAllBytes", decoded)
         self.assertIn("aGVsbG8gd29ybGQ=", decoded)
         self.assertIn("C:\\Temp\\hello.txt", decoded)
+        self.assertEqual(result.operation, "write-file")
+        self.assertEqual(result.data["bytes_written"], len("hello world".encode("utf-8")))
 
 
 if __name__ == "__main__":

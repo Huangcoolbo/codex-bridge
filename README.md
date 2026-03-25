@@ -13,10 +13,11 @@ The first concrete implementation is Windows over OpenSSH. The structure is inte
 
 - host profile registry stored locally in `data/hosts.json`
 - provider/adapter architecture with a Windows provider over an SSH transport
-- CLI commands for `host add`, `host list`, `probe`, `exec`, `read-file`, and `list-dir`
+- CLI commands for `host add`, `host list`, `probe`, `exec`, `read-file`, `list-dir`, and `write-file`
+- consistent JSON result envelope across `probe`, `exec`, `read-file`, `list-dir`, and `write-file`
 - password or key-based SSH auth in the host schema
 - runtime password prompting when the profile omits a stored password
-- basic tests for storage and Windows provider behavior
+- basic tests for storage, service, CLI, and Windows provider behavior
 
 ## Requirements
 
@@ -81,22 +82,43 @@ powershell -ExecutionPolicy Bypass -File .\scripts\probe-host.ps1 -Name lab-win
 
 ### 5. Optional: use the CLI directly
 
+All remote operation commands now print the same JSON envelope shape:
+
+```json
+{
+  "host": "lab-win",
+  "operation": "read-file",
+  "success": true,
+  "exit_code": 0,
+  "stdout": "raw remote stdout",
+  "stderr": "",
+  "target": {"path": "C:\\Temp\\notes.txt", "encoding": "utf-8"},
+  "data": {"content": "...", "encoding": "utf-8"}
+}
+```
+
 Run a PowerShell command:
 
 ```bash
-remote-agent-bridge exec lab-win -- "Get-Process | Select-Object -First 5"
+codex-bridge exec lab-win -- "Get-Process | Select-Object -First 5"
 ```
 
 Read a file:
 
 ```bash
-remote-agent-bridge read-file lab-win C:\Windows\System32\drivers\etc\hosts
+codex-bridge read-file lab-win C:\Windows\System32\drivers\etc\hosts
 ```
 
 List a directory:
 
 ```bash
-remote-agent-bridge list-dir lab-win C:\Users\Public
+codex-bridge list-dir lab-win C:\Users\Public
+```
+
+Write a file:
+
+```bash
+codex-bridge write-file lab-win C:\Temp\notes.txt --content "hello from codex-bridge"
 ```
 
 ## Registry Format
