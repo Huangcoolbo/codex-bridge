@@ -41,11 +41,14 @@ Write-Host "[2/4] Activating virtual environment..."
 $venvPython = Join-Path $projectRoot ".venv\Scripts\python.exe"
 Write-Host "Using interpreter:" (& $venvPython --version)
 
-Write-Host "[3/4] Making sure packaging tools are available..."
+Write-Host "[3/5] Making sure packaging tools are available..."
 Invoke-CheckedCommand -Command { & $venvPython -m ensurepip --upgrade } -ErrorMessage "Failed to prepare pip in the virtual environment."
 Invoke-CheckedCommand -Command { & $venvPython -m pip install setuptools wheel } -ErrorMessage "Failed to install packaging tools in the virtual environment."
 
-Write-Host "[4/4] Installing project dependencies..."
+Write-Host "[4/5] Installing project dependencies..."
 Invoke-CheckedCommand -Command { & $venvPython -m pip install --no-build-isolation -e . } -ErrorMessage "Failed to install project dependencies."
+
+Write-Host "[5/5] Installing test tools..."
+Invoke-CheckedCommand -Command { & $venvPython -m pip install pytest } -ErrorMessage "Failed to install pytest in the virtual environment."
 
 Write-Host "Done. Environment is ready."

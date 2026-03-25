@@ -75,7 +75,7 @@
 
 - [>] 继续改代码：把桥的核心能力往“稳定远程执行 PowerShell 命令”推进
 - [>] 继续优化错误提示，让失败原因更直白（下一步优先做真实远程验证）
-- [ ] 补一个 pytest 默认可跑的本地测试入口（如 pytest.ini / conftest / 安装说明），避免未设置 PYTHONPATH=src 时收集失败
+- [x] 补一个 pytest 默认可跑的本地测试入口（已补 pytest.ini / tests/conftest.py / 安装说明与 init.ps1 安装 pytest，并完成本地验证）
 - [x] 为 exec 增加远程工作目录能力并补测试（已发现并修正 CLI 参数顺序陷阱，pytest 已通过）
 - [x] 为 exec 增加 --command-file 与脚本入口，并补 CLI 测试（支持本地多行 PowerShell 脚本直送）
 - [x] 为 exec 增加 --timeout-seconds 端到端能力，并补 service / CLI / provider / 脚本测试

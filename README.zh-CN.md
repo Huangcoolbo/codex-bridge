@@ -42,7 +42,10 @@
 python -m venv .venv
 . .venv/Scripts/activate
 pip install -e .
+pip install pytest
 ```
+
+现在仓库里已经补了 `pytest.ini` 和 `tests/conftest.py`，新环境里直接跑 `pytest` 就能收集到 `src` 目录下的代码，不需要再手动设置 `PYTHONPATH=src`。
 
 ## 快速开始
 

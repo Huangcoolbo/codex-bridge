@@ -32,7 +32,10 @@ The first concrete implementation is Windows over OpenSSH. The structure is inte
 python -m venv .venv
 . .venv/Scripts/activate
 pip install -e .
+pip install pytest
 ```
+
+If you run tests from a fresh checkout, `pytest.ini` and `tests/conftest.py` now make the `src` layout work without requiring a manual `PYTHONPATH=src` step.
 
 ## Quick Start
 
