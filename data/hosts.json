@@ -1,0 +1,18 @@
+{
+  "hosts": [
+    {
+      "name": "demo-win",
+      "hostname": "192.168.1.50",
+      "username": "admin",
+      "port": 22,
+      "platform": "windows",
+      "transport": "ssh",
+      "auth": {
+        "method": "key",
+        "password": null,
+        "key_path": "C:/Users/test/.ssh/id_ed25519"
+      },
+      "description": null
+    }
+  ]
+}

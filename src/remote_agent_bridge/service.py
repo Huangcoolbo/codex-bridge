@@ -1,0 +1,75 @@
+"""Application service layer for host management and remote operations."""
+
+from __future__ import annotations
+
+from typing import Any, List, Optional
+
+from remote_agent_bridge.exceptions import ProfileNotFoundError
+from remote_agent_bridge.factory import ProviderFactory
+from remote_agent_bridge.models import CommandResult, DirectoryEntry, HostProfile
+from remote_agent_bridge.storage import HostRegistry
+
+
+class BridgeService:
+    """Coordinate registry access with provider execution."""
+
+    def __init__(self, registry: HostRegistry, factory: Optional[ProviderFactory] = None) -> None:
+        self.registry = registry
+        self.factory = factory or ProviderFactory()
+
+    def add_host(self, profile: HostProfile) -> None:
+        """Save a host profile to the registry."""
+        self.registry.save_profile(profile)
+
+    def list_hosts(self) -> List[HostProfile]:
+        """Return all known host profiles."""
+        return self.registry.list_profiles()
+
+    def get_host(self, name: str) -> HostProfile:
+        """Resolve a host profile or raise an explicit error."""
+        profile = self.registry.get_profile(name)
+        if profile is None:
+            raise ProfileNotFoundError("Host '{0}' is not registered.".format(name))
+        return profile
+
+    def probe(self, name: str, password_override: Optional[str] = None) -> Any:
+        """Probe a host for metadata."""
+        provider = self.factory.create(self.get_host(name), password_override=password_override)
+        try:
+            return provider.probe()
+        finally:
+            provider.close()
+
+    def execute(
+        self, name: str, command: str, password_override: Optional[str] = None
+    ) -> CommandResult:
+        """Execute a remote command on a host."""
+        provider = self.factory.create(self.get_host(name), password_override=password_override)
+        try:
+            return provider.execute(command)
+        finally:
+            provider.close()
+
+    def read_file(
+        self,
+        name: str,
+        path: str,
+        encoding: str = "utf-8",
+        password_override: Optional[str] = None,
+    ) -> str:
+        """Read a remote file as text."""
+        provider = self.factory.create(self.get_host(name), password_override=password_override)
+        try:
+            return provider.read_file(path, encoding=encoding)
+        finally:
+            provider.close()
+
+    def list_dir(
+        self, name: str, path: str, password_override: Optional[str] = None
+    ) -> List[DirectoryEntry]:
+        """List a remote directory."""
+        provider = self.factory.create(self.get_host(name), password_override=password_override)
+        try:
+            return provider.list_dir(path)
+        finally:
+            provider.close()
