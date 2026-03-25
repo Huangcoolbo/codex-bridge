@@ -56,7 +56,7 @@
 ## 五、围绕 Codex 破界的能力
 
 - [~] 让桥更像“远程执行通道”而不是零散工具集合（已补 exec --cwd/--command-file、search-text 与 workflow 多步顺序执行；待真实远程验证）
-- [~] 让 Codex 可以连续调用桥完成多步远程操作（已补 workflow，本地一次调用可顺序跑 search-text / read-file / system-info；新增失败时返回已完成步骤与失败步骤的结构化结果；本轮新增 workflow 模板变量，可引用前序步骤结果自动衔接后续步骤，待真实远程闭环验证）
+- [~] 让 Codex 可以连续调用桥完成多步远程操作（已补 workflow，本地一次调用可顺序跑 search-text / read-file / system-info；新增失败时返回已完成步骤与失败步骤的结构化结果；已补 workflow 模板变量，可引用前序步骤结果自动衔接后续步骤，并修正对 provider 返回对象列表的模板取值问题；待真实远程闭环验证）
 - [x] 设计更清晰的远程执行结果结构，方便 Codex 继续下一步
 - [~] 明确“命令执行 / 文件读取 / 目录查看 / 文本搜索”的统一调用方式（结果结构已统一，并新增 workflow 批量入口；待真实远程闭环验证）
 
@@ -86,7 +86,8 @@
 - [ ] 用真实远程 Windows 主机验证 exec --command-file + --cwd 的多步脚本执行闭环
 - [ ] 用真实远程 Windows 主机验证 workflow 的 search-text -> read-file -> system-info 最小闭环
 - [x] 为 workflow 增加前序步骤结果模板引用能力，并补 service 测试与文档
-- [ ] 用真实远程 Windows 主机验证 workflow 模板变量（命中路径回填到 read-file / exec）闭环是否稳定
+- [ ] 用真实远程 Windows 主机验证 workflow 模板变量（命中路径回填到 read-file / exec / write-file）闭环是否稳定
+- [x] 修正 workflow 模板变量对 provider 返回对象列表（如 SearchTextMatch）取值不稳定的问题，并补回归测试
 - [ ] 用真实远程 Windows 主机验证 search-text 的单文件 / 空目录 / 目录递归 / 无命中 / 路径不存在几种结果是否符合预期
 - [ ] 用真实远程 Windows 主机验证 system-info 的网络信息 / 磁盘信息 / 开机时长 / 权限环境结果是否符合预期
 - [ ] 用真实远程 Windows 主机验证 list-dir 的目录不存在 / 误传文件 / 空目录 / 普通目录四种结果是否符合预期

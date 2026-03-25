@@ -7,7 +7,13 @@ import unittest
 from pathlib import Path
 
 from remote_agent_bridge.exceptions import WorkflowExecutionError
-from remote_agent_bridge.models import AuthConfig, CommandResult, HostProfile, RemoteOperationResult
+from remote_agent_bridge.models import (
+    AuthConfig,
+    CommandResult,
+    HostProfile,
+    RemoteOperationResult,
+    SearchTextMatch,
+)
 from remote_agent_bridge.service import BridgeService
 from remote_agent_bridge.storage import HostRegistry
 
@@ -91,7 +97,7 @@ class FakeProvider:
                 "encoding": encoding,
                 "recurse": recurse,
                 "match_count": 1,
-                "matches": [{"path": path, "line_number": 3, "line": "needle here"}],
+                "matches": [SearchTextMatch(path=path, line_number=3, line="needle here")],
             },
         )
 
@@ -311,6 +317,33 @@ class BridgeServiceTests(unittest.TestCase):
                 )
 
             self.assertIn("Workflow template path not found", str(context.exception))
+            self.assertTrue(provider.closed)
+
+    def test_workflow_can_reference_dataclass_items_inside_result_lists(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry = HostRegistry(Path(temp_dir) / "hosts.json")
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            provider = FakeProvider()
+            service = BridgeService(registry, factory=FakeFactory(provider))
+
+            result = service.workflow(
+                "lab-win",
+                [
+                    {"operation": "search-text", "path": "C:\\Logs", "pattern": "needle", "recurse": True},
+                    {"operation": "write-file", "path": "C:\\Temp\\summary.txt", "content": "match={{ steps[0].data.matches[0].line_number }}:{{ steps[0].data.matches[0].line }}"},
+                ],
+            )
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(result.data["steps"][1].target["path"], "C:\\Temp\\summary.txt")
+            self.assertEqual(result.data["steps"][1].data["bytes_written"], len("match=3:needle here".encode("utf-8")))
             self.assertTrue(provider.closed)
 
 

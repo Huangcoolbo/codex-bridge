@@ -278,8 +278,7 @@ class BridgeService:
         for match in _PATH_TOKEN_PATTERN.finditer(path):
             key_token, index_token = match.groups()
             if key_token is not None:
-                if isinstance(current, RemoteOperationResult):
-                    current = current.to_dict()
+                current = self._workflow_template_value(current)
                 if isinstance(current, dict):
                     if key_token not in current:
                         raise ValueError(f"Workflow template path not found: {path}")
@@ -287,6 +286,7 @@ class BridgeService:
                     continue
                 raise ValueError(f"Workflow template path not found: {path}")
             if index_token is not None:
+                current = self._workflow_template_value(current)
                 if isinstance(current, list):
                     index = int(index_token)
                     try:
@@ -295,4 +295,11 @@ class BridgeService:
                         raise ValueError(f"Workflow template path not found: {path}") from error
                     continue
                 raise ValueError(f"Workflow template path not found: {path}")
-        return current
+        return self._workflow_template_value(current)
+
+    def _workflow_template_value(self, value: Any) -> Any:
+        if isinstance(value, RemoteOperationResult):
+            return value.to_dict()
+        if hasattr(value, "to_dict"):
+            return value.to_dict()
+        return value
