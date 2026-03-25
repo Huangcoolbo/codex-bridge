@@ -13,8 +13,8 @@ The first concrete implementation is Windows over OpenSSH. The structure is inte
 
 - host profile registry stored locally in `data/hosts.json`
 - provider/adapter architecture with a Windows provider over an SSH transport
-- CLI commands for `host add`, `host list`, `probe`, `exec`, `read-file`, `system-info`, `list-dir`, `write-file`, and `search-text`, with `exec` supporting inline commands, a local PowerShell script file, and an optional timeout
-- consistent JSON result envelope across `probe`, `exec`, `read-file`, `system-info`, `list-dir`, `write-file`, and `search-text`
+- CLI commands for `host add`, `host list`, `probe`, `exec`, `read-file`, `system-info`, `list-dir`, `write-file`, `search-text`, and `workflow`, with `exec` supporting inline commands, a local PowerShell script file, and an optional timeout
+- consistent JSON result envelope across `probe`, `exec`, `read-file`, `system-info`, `list-dir`, `write-file`, `search-text`, and `workflow`
 - password or key-based SSH auth in the host schema
 - runtime password prompting when the profile omits a stored password
 - basic tests for storage, service, CLI, and Windows provider behavior
@@ -50,6 +50,7 @@ Current helper scripts:
 - `scripts/list-remote-dir.ps1`
 - `scripts/write-remote-file.ps1`
 - `scripts/search-remote-text.ps1`
+- `scripts/run-remote-workflow.ps1`
 
 ### 1. Initialize the project environment
 
@@ -116,6 +117,8 @@ For `exec`, the bridge now forces PowerShell to stop on command errors, emits UT
 For `write-file`, the bridge now checks that the parent path is really a directory, rejects writing into a directory path by mistake, and returns the final normalized path, byte count, and last write time after the file is written.
 
 For `search-text`, the bridge can now search one remote file or a whole directory tree for a literal text pattern, and returns file count, match count, and matched lines so a caller can decide which remote file to inspect next.
+
+For `workflow`, the bridge can now run an ordered JSON step list in one call and return every sub-step as its own structured result, so a caller can batch a small remote investigation loop like search -> read-file -> system-info without losing per-step detail.
 
 Run a PowerShell command:
 
@@ -191,6 +194,22 @@ Search text in one remote file or directory:
 
 ```bash
 codex-bridge search-text lab-win C:\Logs ERROR --recurse
+```
+
+Run a multi-step remote workflow from a local JSON file:
+
+```bash
+codex-bridge workflow lab-win --workflow-file .\workflow.json
+```
+
+Example `workflow.json`:
+
+```json
+[
+  {"operation": "search-text", "path": "C:\\Logs", "pattern": "ERROR", "recurse": true},
+  {"operation": "read-file", "path": "C:\\Logs\\app.log"},
+  {"operation": "system-info"}
+]
 ```
 
 Example `search-text` result shape:

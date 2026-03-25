@@ -53,6 +53,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 password_override=_password_for(service, args.name),
             )
             return _print_operation_result(result)
+        if args.command == "workflow":
+            steps = _resolve_workflow_steps(args)
+            result = service.workflow(
+                args.name,
+                steps,
+                password_override=_password_for(service, args.name),
+            )
+            return _print_operation_result(result)
         if args.command == "list-dir":
             result = service.list_dir(
                 args.name,
@@ -152,6 +160,14 @@ def build_parser() -> argparse.ArgumentParser:
     system_info_parser = subparsers.add_parser("system-info", help="Collect structured system info from the remote host.")
     system_info_parser.add_argument("name", help="Host name.")
 
+    workflow_parser = subparsers.add_parser("workflow", help="Run a JSON-defined multi-step remote workflow.")
+    workflow_parser.add_argument("name", help="Host name.")
+    workflow_parser.add_argument(
+        "--workflow-file",
+        required=True,
+        help="Local JSON file describing ordered workflow steps.",
+    )
+
     list_parser = subparsers.add_parser("list-dir", help="List a remote directory.")
     list_parser.add_argument("name", help="Host name.")
     list_parser.add_argument("path", help="Remote directory path.")
@@ -247,6 +263,21 @@ def _validate_timeout_seconds(value: int | None) -> int | None:
     if value <= 0:
         raise ValueError("--timeout-seconds must be a positive integer.")
     return value
+
+
+def _resolve_workflow_steps(args: argparse.Namespace) -> list[dict]:
+    payload = _read_local_text_file(Path(args.workflow_file), encoding="utf-8-sig", label="workflow file")
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"Failed to parse workflow file '{args.workflow_file}': {error}") from error
+
+    if not isinstance(data, list) or not data:
+        raise ValueError("Workflow file must contain a non-empty JSON array of step objects.")
+    for index, step in enumerate(data, start=1):
+        if not isinstance(step, dict):
+            raise ValueError(f"Workflow step #{index} must be a JSON object.")
+    return data
 
 
 def _resolve_write_content(args: argparse.Namespace) -> str:

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from remote_agent_bridge.exceptions import ProfileNotFoundError
 from remote_agent_bridge.factory import ProviderFactory
-from remote_agent_bridge.models import HostProfile, RemoteOperationResult
+from remote_agent_bridge.models import CommandResult, HostProfile, RemoteOperationResult
 from remote_agent_bridge.storage import HostRegistry
 
 
@@ -127,3 +127,89 @@ class BridgeService:
             return provider.system_info().with_host(name)
         finally:
             provider.close()
+
+    def workflow(
+        self,
+        name: str,
+        steps: List[Dict[str, Any]],
+        password_override: Optional[str] = None,
+    ) -> RemoteOperationResult:
+        """Run multiple remote steps in order and return a structured batch result."""
+        provider = self.factory.create(self.get_host(name), password_override=password_override)
+        try:
+            results: List[RemoteOperationResult] = []
+            for index, step in enumerate(steps):
+                results.append(self._run_workflow_step(provider, step).with_host(name))
+            return RemoteOperationResult.from_command(
+                "workflow",
+                CommandResult(exit_code=0, stdout="", stderr=""),
+                target={"step_count": len(steps)},
+                data={
+                    "step_count": len(steps),
+                    "steps": results,
+                },
+                host=name,
+            )
+        finally:
+            provider.close()
+
+    def _run_workflow_step(self, provider: Any, step: Dict[str, Any]) -> RemoteOperationResult:
+        operation = str(step.get("operation", "")).strip()
+        if not operation:
+            raise ValueError("Each workflow step must include a non-empty 'operation'.")
+
+        if operation == "exec":
+            command = str(step.get("command", ""))
+            if not command.strip():
+                raise ValueError("Workflow exec step requires a non-empty 'command'.")
+            return provider.execute(
+                command,
+                cwd=step.get("cwd"),
+                timeout_seconds=step.get("timeout_seconds"),
+            )
+
+        if operation == "read-file":
+            path = str(step.get("path", ""))
+            if not path.strip():
+                raise ValueError("Workflow read-file step requires a non-empty 'path'.")
+            return provider.read_file(path, encoding=str(step.get("encoding", "utf-8")))
+
+        if operation == "list-dir":
+            path = str(step.get("path", ""))
+            if not path.strip():
+                raise ValueError("Workflow list-dir step requires a non-empty 'path'.")
+            return provider.list_dir(path)
+
+        if operation == "write-file":
+            path = str(step.get("path", ""))
+            if not path.strip():
+                raise ValueError("Workflow write-file step requires a non-empty 'path'.")
+            if "content" not in step:
+                raise ValueError("Workflow write-file step requires 'content'.")
+            return provider.write_file(
+                path,
+                content=str(step.get("content")),
+                encoding=str(step.get("encoding", "utf-8")),
+            )
+
+        if operation == "search-text":
+            path = str(step.get("path", ""))
+            pattern = str(step.get("pattern", ""))
+            if not path.strip():
+                raise ValueError("Workflow search-text step requires a non-empty 'path'.")
+            if not pattern.strip():
+                raise ValueError("Workflow search-text step requires a non-empty 'pattern'.")
+            return provider.search_text(
+                path,
+                pattern,
+                encoding=str(step.get("encoding", "utf-8")),
+                recurse=bool(step.get("recurse", False)),
+            )
+
+        if operation == "system-info":
+            return provider.system_info()
+
+        if operation == "probe":
+            return provider.probe()
+
+        raise ValueError(f"Unsupported workflow operation: {operation}")

@@ -55,10 +55,10 @@
 
 ## 五、围绕 Codex 破界的能力
 
-- [>] 让桥更像“远程执行通道”而不是零散工具集合（已补 exec --cwd/--command-file 与 search-text）
-- [>] 让 Codex 可以连续调用桥完成多步远程操作（已补 exec --cwd/--command-file，可先 search-text 再 read-file；待真实远程闭环验证）
+- [~] 让桥更像“远程执行通道”而不是零散工具集合（已补 exec --cwd/--command-file、search-text 与 workflow 多步顺序执行；待真实远程验证）
+- [~] 让 Codex 可以连续调用桥完成多步远程操作（已补 workflow，本地一次调用可顺序跑 search-text / read-file / system-info；待真实远程闭环验证）
 - [x] 设计更清晰的远程执行结果结构，方便 Codex 继续下一步
-- [~] 明确“命令执行 / 文件读取 / 目录查看 / 文本搜索”的统一调用方式（结果结构已统一，CLI 交互层还可继续抽象）
+- [~] 明确“命令执行 / 文件读取 / 目录查看 / 文本搜索”的统一调用方式（结果结构已统一，并新增 workflow 批量入口；待真实远程闭环验证）
 
 ## 六、检验与验收
 
@@ -75,12 +75,15 @@
 
 - [>] 继续改代码：把桥的核心能力往“稳定远程执行 PowerShell 命令”推进
 - [>] 继续优化错误提示，让失败原因更直白（下一步优先做真实远程验证）
+- [ ] 补一个 pytest 默认可跑的本地测试入口（如 pytest.ini / conftest / 安装说明），避免未设置 PYTHONPATH=src 时收集失败
 - [x] 为 exec 增加远程工作目录能力并补测试（已发现并修正 CLI 参数顺序陷阱，pytest 已通过）
 - [x] 为 exec 增加 --command-file 与脚本入口，并补 CLI 测试（支持本地多行 PowerShell 脚本直送）
 - [x] 为 exec 增加 --timeout-seconds 端到端能力，并补 service / CLI / provider / 脚本测试
 - [x] 补齐 search_text 抽象接口并落地 Windows provider / CLI / 脚本 / 测试
 - [ ] 真实远程验证并更新状态
+- [x] 为 workflow 增加本地 JSON 多步执行入口，并补 service / CLI / 脚本 / 文档
 - [ ] 用真实远程 Windows 主机验证 exec --command-file + --cwd 的多步脚本执行闭环
+- [ ] 用真实远程 Windows 主机验证 workflow 的 search-text -> read-file -> system-info 最小闭环
 - [ ] 用真实远程 Windows 主机验证 search-text 的单文件 / 空目录 / 目录递归 / 无命中 / 路径不存在几种结果是否符合预期
 - [ ] 用真实远程 Windows 主机验证 system-info 的网络信息 / 磁盘信息 / 开机时长 / 权限环境结果是否符合预期
 - [ ] 用真实远程 Windows 主机验证 list-dir 的目录不存在 / 误传文件 / 空目录 / 普通目录四种结果是否符合预期

@@ -23,6 +23,7 @@
 - 列出远程目录内容
 - 写入远程文件
 - 在远程文件或目录树里搜索文本
+- 用一个本地 JSON 工作流文件顺序执行多步远程操作
 - 所有远程操作返回统一 JSON 结果结构，方便后续继续处理
 
 ## 使用前提
@@ -59,6 +60,7 @@ pip install -e .
 - `scripts/list-remote-dir.ps1`
 - `scripts/write-remote-file.ps1`
 - `scripts/search-remote-text.ps1`
+- `scripts/run-remote-workflow.ps1`
 
 ### 1. 初始化本地环境
 
@@ -124,6 +126,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\probe-host.ps1 -Name lab-win
 
 其中 `search-text` 现在会在单个远程文件或整个目录树里做字面量文本搜索，并返回带文件路径和行号的结构化匹配结果，方便本地 Codex 先搜再决定下一步读哪个文件。
 
+其中 `workflow` 现在可以一次读取本地 JSON 工作流文件，按顺序执行多步远程操作，并把每一步都作为独立结构化结果返回，更适合做 search -> read-file -> system-info 这种小闭环。
+
 其中 `exec` 现在还支持先切换到一个经过校验的远程工作目录再执行命令，也支持先读取本地 PowerShell 脚本文件再发送到远程执行，更适合连续多步操作。
 
 在远程 Windows 上执行命令：
@@ -166,6 +170,22 @@ codex-bridge list-dir lab-win C:\Users\Public
 
 ```bash
 codex-bridge search-text lab-win C:\Logs ERROR --recurse
+```
+
+从本地 JSON 工作流文件执行多步远程操作：
+
+```bash
+codex-bridge workflow lab-win --workflow-file .\workflow.json
+```
+
+`workflow.json` 示例：
+
+```json
+[
+  {"operation": "search-text", "path": "C:\\Logs", "pattern": "ERROR", "recurse": true},
+  {"operation": "read-file", "path": "C:\\Logs\\app.log"},
+  {"operation": "system-info"}
+]
 ```
 
 `search-text` 返回的结构里会带上：

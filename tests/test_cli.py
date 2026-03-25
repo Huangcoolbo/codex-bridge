@@ -327,6 +327,115 @@ class CLITests(unittest.TestCase):
         self.assertEqual(payload["data"]["drives"][0]["name"], "C:")
         info_mock.assert_called_once_with("lab-win", password_override=None)
 
+    def test_workflow_reads_json_file_and_prints_structured_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_path = Path(temp_dir) / "hosts.json"
+            workflow_path = Path(temp_dir) / "workflow.json"
+            workflow_path.write_text(
+                json.dumps(
+                    [
+                        {"operation": "search-text", "path": "C:\\Logs", "pattern": "ERROR", "recurse": True},
+                        {"operation": "read-file", "path": "C:\\Logs\\app.log"},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            registry = HostRegistry(registry_path)
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            result = RemoteOperationResult.from_command(
+                "workflow",
+                CommandResult(exit_code=0, stdout="", stderr=""),
+                target={"step_count": 2},
+                data={
+                    "step_count": 2,
+                    "steps": [
+                        RemoteOperationResult.from_command(
+                            "search-text",
+                            CommandResult(exit_code=0, stdout="{}", stderr=""),
+                            target={"path": "C:\\Logs", "pattern": "ERROR", "encoding": "utf-8", "recurse": True},
+                            data={"match_count": 1, "matches": [{"path": "C:\\Logs\\app.log", "line_number": 12, "line": "ERROR boom"}]},
+                            host="lab-win",
+                        ),
+                        RemoteOperationResult.from_command(
+                            "read-file",
+                            CommandResult(exit_code=0, stdout="{}", stderr=""),
+                            target={"path": "C:\\Logs\\app.log", "encoding": "utf-8"},
+                            data={"path": "C:\\Logs\\app.log", "content": "ERROR boom", "encoding": "utf-8", "size": 10},
+                            host="lab-win",
+                        ),
+                    ],
+                },
+                host="lab-win",
+            )
+
+            with patch("remote_agent_bridge.cli.BridgeService.workflow", return_value=result) as workflow_mock:
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    exit_code = main(
+                        [
+                            "--registry-file",
+                            str(registry_path),
+                            "workflow",
+                            "lab-win",
+                            "--workflow-file",
+                            str(workflow_path),
+                        ]
+                    )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["operation"], "workflow")
+        self.assertEqual(payload["data"]["step_count"], 2)
+        self.assertEqual(payload["data"]["steps"][0]["operation"], "search-text")
+        self.assertEqual(payload["data"]["steps"][1]["operation"], "read-file")
+        workflow_mock.assert_called_once_with(
+            "lab-win",
+            [
+                {"operation": "search-text", "path": "C:\\Logs", "pattern": "ERROR", "recurse": True},
+                {"operation": "read-file", "path": "C:\\Logs\\app.log"},
+            ],
+            password_override=None,
+        )
+
+    def test_workflow_rejects_invalid_json_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_path = Path(temp_dir) / "hosts.json"
+            workflow_path = Path(temp_dir) / "workflow.json"
+            workflow_path.write_text("{not-json}", encoding="utf-8")
+            registry = HostRegistry(registry_path)
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = main(
+                    [
+                        "--registry-file",
+                        str(registry_path),
+                        "workflow",
+                        "lab-win",
+                        "--workflow-file",
+                        str(workflow_path),
+                    ]
+                )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Failed to parse workflow file", stderr.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

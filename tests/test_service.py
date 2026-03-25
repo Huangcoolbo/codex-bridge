@@ -180,6 +180,38 @@ class BridgeServiceTests(unittest.TestCase):
             self.assertEqual(result.data["computer_name"], "LAB")
             self.assertTrue(provider.closed)
 
+    def test_workflow_returns_ordered_structured_steps(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry = HostRegistry(Path(temp_dir) / "hosts.json")
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            provider = FakeProvider()
+            service = BridgeService(registry, factory=FakeFactory(provider))
+
+            result = service.workflow(
+                "lab-win",
+                [
+                    {"operation": "search-text", "path": "C:\\Temp", "pattern": "needle", "recurse": True},
+                    {"operation": "read-file", "path": "C:\\Temp\\app.log"},
+                    {"operation": "system-info"},
+                ],
+            )
+
+            self.assertEqual(result.host, "lab-win")
+            self.assertEqual(result.operation, "workflow")
+            self.assertEqual(result.data["step_count"], 3)
+            self.assertEqual(result.data["steps"][0].operation, "search-text")
+            self.assertEqual(result.data["steps"][1].operation, "read-file")
+            self.assertEqual(result.data["steps"][2].operation, "system-info")
+            self.assertEqual(result.data["steps"][0].host, "lab-win")
+            self.assertTrue(provider.closed)
+
 
 if __name__ == "__main__":
     unittest.main()
