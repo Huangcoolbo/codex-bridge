@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from remote_agent_bridge.exceptions import WorkflowExecutionError
 from remote_agent_bridge.models import AuthConfig, CommandResult, HostProfile, RemoteOperationResult
 from remote_agent_bridge.service import BridgeService
 from remote_agent_bridge.storage import HostRegistry
@@ -28,6 +29,13 @@ class FakeProvider:
         cwd: str | None = None,
         timeout_seconds: int | None = None,
     ) -> RemoteOperationResult:
+        if command == "FAIL-COMMAND":
+            return RemoteOperationResult.from_command(
+                "exec",
+                CommandResult(exit_code=5, stdout="", stderr="boom"),
+                target={"command": command, "cwd": cwd, "timeout_seconds": timeout_seconds},
+                data={"command": command, "cwd": cwd, "timeout_seconds": timeout_seconds},
+            )
         return RemoteOperationResult.from_command(
             "exec",
             CommandResult(exit_code=0, stdout="done", stderr=""),
@@ -210,6 +218,44 @@ class BridgeServiceTests(unittest.TestCase):
             self.assertEqual(result.data["steps"][1].operation, "read-file")
             self.assertEqual(result.data["steps"][2].operation, "system-info")
             self.assertEqual(result.data["steps"][0].host, "lab-win")
+            self.assertTrue(provider.closed)
+
+    def test_workflow_returns_partial_results_when_a_step_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry = HostRegistry(Path(temp_dir) / "hosts.json")
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            provider = FakeProvider()
+            service = BridgeService(registry, factory=FakeFactory(provider))
+
+            with self.assertRaises(WorkflowExecutionError) as context:
+                service.workflow(
+                    "lab-win",
+                    [
+                        {"operation": "read-file", "path": "C:\\Temp\\app.log"},
+                        {"operation": "exec", "command": "FAIL-COMMAND"},
+                        {"operation": "system-info"},
+                    ],
+                )
+
+            result = context.exception.result
+            self.assertEqual(result.host, "lab-win")
+            self.assertEqual(result.operation, "workflow")
+            self.assertFalse(result.success)
+            self.assertEqual(result.exit_code, 5)
+            self.assertEqual(result.data["step_count"], 3)
+            self.assertEqual(result.data["completed_step_count"], 1)
+            self.assertEqual(result.data["failed_step_index"], 1)
+            self.assertEqual(result.data["steps"][0].operation, "read-file")
+            self.assertEqual(result.data["failed_step"].operation, "exec")
+            self.assertEqual(result.data["failed_step"].target["command"], "FAIL-COMMAND")
+            self.assertEqual(result.stderr, "boom")
             self.assertTrue(provider.closed)
 
 

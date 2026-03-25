@@ -123,6 +123,8 @@ For `search-text`, the bridge can now search one remote file or a whole director
 
 For `workflow`, the bridge can now run an ordered JSON step list in one call and return every sub-step as its own structured result, so a caller can batch a small remote investigation loop like search -> read-file -> system-info without losing per-step detail.
 
+If a workflow stops in the middle, the CLI now returns a structured failure result that still includes the completed steps, the failed step index, and the failed step payload, so a caller can continue from the last good point instead of losing the whole execution context.
+
 Run a PowerShell command:
 
 ```bash

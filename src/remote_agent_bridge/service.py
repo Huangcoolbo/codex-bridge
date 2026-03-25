@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from remote_agent_bridge.exceptions import ProfileNotFoundError
+from remote_agent_bridge.exceptions import ProfileNotFoundError, WorkflowExecutionError
 from remote_agent_bridge.factory import ProviderFactory
 from remote_agent_bridge.models import CommandResult, HostProfile, RemoteOperationResult
 from remote_agent_bridge.storage import HostRegistry
@@ -139,13 +139,34 @@ class BridgeService:
         try:
             results: List[RemoteOperationResult] = []
             for index, step in enumerate(steps):
-                results.append(self._run_workflow_step(provider, step).with_host(name))
+                step_result = self._run_workflow_step(provider, step).with_host(name)
+                if not step_result.success:
+                    workflow_result = RemoteOperationResult.from_command(
+                        "workflow",
+                        CommandResult(
+                            exit_code=step_result.exit_code,
+                            stdout=step_result.stdout,
+                            stderr=step_result.stderr,
+                        ),
+                        target={"step_count": len(steps)},
+                        data={
+                            "step_count": len(steps),
+                            "completed_step_count": len(results),
+                            "failed_step_index": index,
+                            "steps": results,
+                            "failed_step": step_result,
+                        },
+                        host=name,
+                    )
+                    raise WorkflowExecutionError("Workflow failed.", workflow_result)
+                results.append(step_result)
             return RemoteOperationResult.from_command(
                 "workflow",
                 CommandResult(exit_code=0, stdout="", stderr=""),
                 target={"step_count": len(steps)},
                 data={
                     "step_count": len(steps),
+                    "completed_step_count": len(results),
                     "steps": results,
                 },
                 host=name,

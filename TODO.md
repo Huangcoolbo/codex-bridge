@@ -56,7 +56,7 @@
 ## 五、围绕 Codex 破界的能力
 
 - [~] 让桥更像“远程执行通道”而不是零散工具集合（已补 exec --cwd/--command-file、search-text 与 workflow 多步顺序执行；待真实远程验证）
-- [~] 让 Codex 可以连续调用桥完成多步远程操作（已补 workflow，本地一次调用可顺序跑 search-text / read-file / system-info；待真实远程闭环验证）
+- [~] 让 Codex 可以连续调用桥完成多步远程操作（已补 workflow，本地一次调用可顺序跑 search-text / read-file / system-info；新增失败时返回已完成步骤与失败步骤的结构化结果，待真实远程闭环验证）
 - [x] 设计更清晰的远程执行结果结构，方便 Codex 继续下一步
 - [~] 明确“命令执行 / 文件读取 / 目录查看 / 文本搜索”的统一调用方式（结果结构已统一，并新增 workflow 批量入口；待真实远程闭环验证）
 
@@ -82,6 +82,7 @@
 - [x] 补齐 search_text 抽象接口并落地 Windows provider / CLI / 脚本 / 测试
 - [ ] 真实远程验证并更新状态
 - [x] 为 workflow 增加本地 JSON 多步执行入口，并补 service / CLI / 脚本 / 文档
+- [x] 为 workflow 增加失败时保留已完成步骤与失败步骤的结构化返回，并补 service / CLI 测试
 - [ ] 用真实远程 Windows 主机验证 exec --command-file + --cwd 的多步脚本执行闭环
 - [ ] 用真实远程 Windows 主机验证 workflow 的 search-text -> read-file -> system-info 最小闭环
 - [ ] 用真实远程 Windows 主机验证 search-text 的单文件 / 空目录 / 目录递归 / 无命中 / 路径不存在几种结果是否符合预期

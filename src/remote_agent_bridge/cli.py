@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-from remote_agent_bridge.exceptions import BridgeError, CommandExecutionError
+from remote_agent_bridge.exceptions import BridgeError, CommandExecutionError, WorkflowExecutionError
 from remote_agent_bridge.models import AuthConfig, HostProfile, RemoteOperationResult
 from remote_agent_bridge.service import BridgeService
 from remote_agent_bridge.storage import HostRegistry
@@ -91,6 +91,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return 1
     except BridgeError as error:
+        if isinstance(error, WorkflowExecutionError):
+            return _print_operation_result(error.result)
         print(str(error), file=sys.stderr)
         if isinstance(error, CommandExecutionError):
             if error.result.stderr:

@@ -20,3 +20,11 @@ class CommandExecutionError(BridgeError):
         super().__init__(message)
         self.result = result
 
+
+class WorkflowExecutionError(BridgeError):
+    """Raised when a workflow fails but partial structured results are available."""
+
+    def __init__(self, message: str, result) -> None:
+        super().__init__(message)
+        self.result = result
+

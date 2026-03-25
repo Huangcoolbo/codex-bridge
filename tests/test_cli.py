@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from remote_agent_bridge.cli import main
+from remote_agent_bridge.exceptions import WorkflowExecutionError
 from remote_agent_bridge.models import AuthConfig, CommandResult, HostProfile, RemoteOperationResult
 from remote_agent_bridge.storage import HostRegistry
 
@@ -403,6 +404,81 @@ class CLITests(unittest.TestCase):
             ],
             password_override=None,
         )
+
+    def test_workflow_prints_partial_results_when_service_returns_structured_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_path = Path(temp_dir) / "hosts.json"
+            workflow_path = Path(temp_dir) / "workflow.json"
+            workflow_path.write_text(
+                json.dumps(
+                    [
+                        {"operation": "read-file", "path": "C:\\Logs\\app.log"},
+                        {"operation": "exec", "command": "FAIL-COMMAND"},
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            registry = HostRegistry(registry_path)
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            failure_result = RemoteOperationResult.from_command(
+                "workflow",
+                CommandResult(exit_code=5, stdout="", stderr="boom"),
+                target={"step_count": 2},
+                data={
+                    "step_count": 2,
+                    "completed_step_count": 1,
+                    "failed_step_index": 1,
+                    "steps": [
+                        RemoteOperationResult.from_command(
+                            "read-file",
+                            CommandResult(exit_code=0, stdout="{}", stderr=""),
+                            target={"path": "C:\\Logs\\app.log", "encoding": "utf-8"},
+                            data={"path": "C:\\Logs\\app.log", "content": "ok", "encoding": "utf-8"},
+                            host="lab-win",
+                        )
+                    ],
+                    "failed_step": RemoteOperationResult.from_command(
+                        "exec",
+                        CommandResult(exit_code=5, stdout="", stderr="boom"),
+                        target={"command": "FAIL-COMMAND", "cwd": None, "timeout_seconds": None},
+                        data={"command": "FAIL-COMMAND", "cwd": None, "timeout_seconds": None},
+                        host="lab-win",
+                    ),
+                },
+                host="lab-win",
+            )
+
+            with patch(
+                "remote_agent_bridge.cli.BridgeService.workflow",
+                side_effect=WorkflowExecutionError("Workflow failed.", failure_result),
+            ):
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    exit_code = main(
+                        [
+                            "--registry-file",
+                            str(registry_path),
+                            "workflow",
+                            "lab-win",
+                            "--workflow-file",
+                            str(workflow_path),
+                        ]
+                    )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 5)
+        self.assertEqual(payload["operation"], "workflow")
+        self.assertFalse(payload["success"])
+        self.assertEqual(payload["data"]["completed_step_count"], 1)
+        self.assertEqual(payload["data"]["failed_step_index"], 1)
+        self.assertEqual(payload["data"]["failed_step"]["operation"], "exec")
 
     def test_workflow_rejects_invalid_json_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
