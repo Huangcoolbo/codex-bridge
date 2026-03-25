@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 
 from remote_agent_bridge.exceptions import ProfileNotFoundError, WorkflowExecutionError
 from remote_agent_bridge.factory import ProviderFactory
 from remote_agent_bridge.models import CommandResult, HostProfile, RemoteOperationResult
 from remote_agent_bridge.storage import HostRegistry
+
+_TEMPLATE_PATTERN = re.compile(r"\{\{\s*(.+?)\s*\}\}")
+_PATH_TOKEN_PATTERN = re.compile(r"([^.\[\]]+)|\[(\d+)\]")
 
 
 class BridgeService:
@@ -139,7 +143,8 @@ class BridgeService:
         try:
             results: List[RemoteOperationResult] = []
             for index, step in enumerate(steps):
-                step_result = self._run_workflow_step(provider, step).with_host(name)
+                resolved_step = self._resolve_workflow_templates(step, results)
+                step_result = self._run_workflow_step(provider, resolved_step).with_host(name)
                 if not step_result.success:
                     workflow_result = RemoteOperationResult.from_command(
                         "workflow",
@@ -234,3 +239,60 @@ class BridgeService:
             return provider.probe()
 
         raise ValueError(f"Unsupported workflow operation: {operation}")
+
+    def _resolve_workflow_templates(
+        self,
+        value: Any,
+        results: List[RemoteOperationResult],
+    ) -> Any:
+        if isinstance(value, dict):
+            return {key: self._resolve_workflow_templates(item, results) for key, item in value.items()}
+        if isinstance(value, list):
+            return [self._resolve_workflow_templates(item, results) for item in value]
+        if isinstance(value, str):
+            return self._render_workflow_string(value, results)
+        return value
+
+    def _render_workflow_string(self, template: str, results: List[RemoteOperationResult]) -> Any:
+        matches = list(_TEMPLATE_PATTERN.finditer(template))
+        if not matches:
+            return template
+        if len(matches) == 1 and matches[0].span() == (0, len(template)):
+            return self._resolve_workflow_expression(matches[0].group(1), results)
+
+        rendered = template
+        for match in matches:
+            expression = match.group(1)
+            rendered_value = self._resolve_workflow_expression(expression, results)
+            rendered = rendered.replace(match.group(0), str(rendered_value))
+        return rendered
+
+    def _resolve_workflow_expression(self, expression: str, results: List[RemoteOperationResult]) -> Any:
+        path = expression.strip()
+        if not path:
+            raise ValueError("Workflow template expression cannot be empty.")
+        return self._resolve_workflow_path(path, {"steps": results})
+
+    def _resolve_workflow_path(self, path: str, context: Any) -> Any:
+        current = context
+        for match in _PATH_TOKEN_PATTERN.finditer(path):
+            key_token, index_token = match.groups()
+            if key_token is not None:
+                if isinstance(current, RemoteOperationResult):
+                    current = current.to_dict()
+                if isinstance(current, dict):
+                    if key_token not in current:
+                        raise ValueError(f"Workflow template path not found: {path}")
+                    current = current[key_token]
+                    continue
+                raise ValueError(f"Workflow template path not found: {path}")
+            if index_token is not None:
+                if isinstance(current, list):
+                    index = int(index_token)
+                    try:
+                        current = current[index]
+                    except IndexError as error:
+                        raise ValueError(f"Workflow template path not found: {path}") from error
+                    continue
+                raise ValueError(f"Workflow template path not found: {path}")
+        return current

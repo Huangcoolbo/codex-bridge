@@ -258,6 +258,61 @@ class BridgeServiceTests(unittest.TestCase):
             self.assertEqual(result.stderr, "boom")
             self.assertTrue(provider.closed)
 
+    def test_workflow_can_reference_previous_step_results(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry = HostRegistry(Path(temp_dir) / "hosts.json")
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            provider = FakeProvider()
+            service = BridgeService(registry, factory=FakeFactory(provider))
+
+            result = service.workflow(
+                "lab-win",
+                [
+                    {"operation": "search-text", "path": "C:\\Temp", "pattern": "needle", "recurse": True},
+                    {"operation": "read-file", "path": "{{ steps[0].data.matches[0].path }}"},
+                    {"operation": "write-file", "path": "C:\\Temp\\copied.txt", "content": "first hit={{ steps[0].data.matches[0].line }}"},
+                ],
+            )
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(result.data["steps"][1].target["path"], "C:\\Temp")
+            self.assertEqual(result.data["steps"][2].target["path"], "C:\\Temp\\copied.txt")
+            self.assertEqual(result.data["steps"][2].data["bytes_written"], len("first hit=needle here".encode("utf-8")))
+            self.assertTrue(provider.closed)
+
+    def test_workflow_template_reports_missing_path_clearly(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry = HostRegistry(Path(temp_dir) / "hosts.json")
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            provider = FakeProvider()
+            service = BridgeService(registry, factory=FakeFactory(provider))
+
+            with self.assertRaises(ValueError) as context:
+                service.workflow(
+                    "lab-win",
+                    [
+                        {"operation": "probe"},
+                        {"operation": "read-file", "path": "{{ steps[0].data.missing }}"},
+                    ],
+                )
+
+            self.assertIn("Workflow template path not found", str(context.exception))
+            self.assertTrue(provider.closed)
+
 
 if __name__ == "__main__":
     unittest.main()

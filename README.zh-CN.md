@@ -131,6 +131,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\probe-host.ps1 -Name lab-win
 
 其中 `workflow` 现在可以一次读取本地 JSON 工作流文件，按顺序执行多步远程操作，并把每一步都作为独立结构化结果返回，更适合做 search -> read-file -> system-info 这种小闭环。
 
+现在 `workflow` 里的后续步骤还可以通过 `{{ ... }}` 直接引用前面步骤返回的数据，比如先搜索出命中文件，再把这个路径直接喂给下一步 `read-file`，不用事先把路径写死。
+
 其中 `exec` 现在还支持先切换到一个经过校验的远程工作目录再执行命令，也支持先读取本地 PowerShell 脚本文件再发送到远程执行，更适合连续多步操作。
 
 在远程 Windows 上执行命令：
@@ -186,10 +188,17 @@ codex-bridge workflow lab-win --workflow-file .\workflow.json
 ```json
 [
   {"operation": "search-text", "path": "C:\\Logs", "pattern": "ERROR", "recurse": true},
-  {"operation": "read-file", "path": "C:\\Logs\\app.log"},
+  {"operation": "read-file", "path": "{{ steps[0].data.matches[0].path }}"},
+  {"operation": "exec", "cwd": "C:\\Logs", "command": "Write-Output 'first hit: {{ steps[0].data.matches[0].line_number }}'"},
   {"operation": "system-info"}
 ]
 ```
+
+当前模板表达式从 `steps` 开始取值，例如：
+
+- `{{ steps[0].data.matches[0].path }}`
+- `{{ steps[1].target.path }}`
+- `prefix={{ steps[0].operation }}`
 
 `search-text` 返回的结构里会带上：
 

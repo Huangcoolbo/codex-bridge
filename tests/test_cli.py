@@ -480,6 +480,54 @@ class CLITests(unittest.TestCase):
         self.assertEqual(payload["data"]["failed_step_index"], 1)
         self.assertEqual(payload["data"]["failed_step"]["operation"], "exec")
 
+    def test_workflow_passes_template_steps_from_json_file_to_service(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_path = Path(temp_dir) / "hosts.json"
+            workflow_path = Path(temp_dir) / "workflow.json"
+            workflow_steps = [
+                {"operation": "search-text", "path": "C:\\Logs", "pattern": "ERROR", "recurse": True},
+                {"operation": "read-file", "path": "{{ steps[0].data.matches[0].path }}"},
+                {"operation": "exec", "command": "Write-Output 'line={{ steps[0].data.matches[0].line_number }}'"},
+            ]
+            workflow_path.write_text(json.dumps(workflow_steps), encoding="utf-8")
+            registry = HostRegistry(registry_path)
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            result = RemoteOperationResult.from_command(
+                "workflow",
+                CommandResult(exit_code=0, stdout="", stderr=""),
+                target={"step_count": 3},
+                data={"step_count": 3, "steps": []},
+                host="lab-win",
+            )
+
+            with patch("remote_agent_bridge.cli.BridgeService.workflow", return_value=result) as workflow_mock:
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    exit_code = main(
+                        [
+                            "--registry-file",
+                            str(registry_path),
+                            "workflow",
+                            "lab-win",
+                            "--workflow-file",
+                            str(workflow_path),
+                        ]
+                    )
+
+        self.assertEqual(exit_code, 0)
+        workflow_mock.assert_called_once_with(
+            "lab-win",
+            workflow_steps,
+            password_override=None,
+        )
+
     def test_workflow_rejects_invalid_json_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             registry_path = Path(temp_dir) / "hosts.json"

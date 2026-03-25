@@ -123,6 +123,8 @@ For `search-text`, the bridge can now search one remote file or a whole director
 
 For `workflow`, the bridge can now run an ordered JSON step list in one call and return every sub-step as its own structured result, so a caller can batch a small remote investigation loop like search -> read-file -> system-info without losing per-step detail.
 
+Workflow steps can now also reference earlier step results with `{{ ... }}` templates, so a later step can directly reuse a discovered path, line, or other returned field instead of hardcoding it ahead of time.
+
 If a workflow stops in the middle, the CLI now returns a structured failure result that still includes the completed steps, the failed step index, and the failed step payload, so a caller can continue from the last good point instead of losing the whole execution context.
 
 Run a PowerShell command:
@@ -212,10 +214,17 @@ Example `workflow.json`:
 ```json
 [
   {"operation": "search-text", "path": "C:\\Logs", "pattern": "ERROR", "recurse": true},
-  {"operation": "read-file", "path": "C:\\Logs\\app.log"},
+  {"operation": "read-file", "path": "{{ steps[0].data.matches[0].path }}"},
+  {"operation": "exec", "cwd": "C:\\Logs", "command": "Write-Output 'first hit: {{ steps[0].data.matches[0].line_number }}'"},
   {"operation": "system-info"}
 ]
 ```
+
+Template expressions currently start from `steps`, for example:
+
+- `{{ steps[0].data.matches[0].path }}`
+- `{{ steps[1].target.path }}`
+- `prefix={{ steps[0].operation }}`
 
 Example `search-text` result shape:
 
