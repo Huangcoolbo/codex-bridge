@@ -75,6 +75,7 @@
 - [>] 继续优化错误提示，让失败原因更直白（下一步优先做真实远程验证）
 - [x] 为 exec 增加远程工作目录能力并补测试（已发现并修正 CLI 参数顺序陷阱，pytest 已通过）
 - [x] 为 exec 增加 --command-file 与脚本入口，并补 CLI 测试（支持本地多行 PowerShell 脚本直送）
+- [x] 为 exec 增加 --timeout-seconds 端到端能力，并补 service / CLI / provider / 脚本测试
 - [x] 补齐 search_text 抽象接口并落地 Windows provider / CLI / 脚本 / 测试
 - [ ] 真实远程验证并更新状态
 - [ ] 用真实远程 Windows 主机验证 exec --command-file + --cwd 的多步脚本执行闭环

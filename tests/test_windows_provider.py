@@ -17,10 +17,12 @@ class FakeTransport:
     def __init__(self, result: CommandResult) -> None:
         self.result = result
         self.commands: list[str] = []
+        self.timeouts: list[int | None] = []
         self.closed = False
 
     def run(self, command: str, timeout: int | None = None) -> CommandResult:
         self.commands.append(command)
+        self.timeouts.append(timeout)
         return self.result
 
     def close(self) -> None:
@@ -146,6 +148,18 @@ class WindowsSSHProviderTests(unittest.TestCase):
         self.assertIn("Set-Location -LiteralPath $cwd", decoded)
         self.assertIn("Get-ChildItem", decoded)
         self.assertEqual(result.target["cwd"], "C:\\Temp")
+        self.assertIsNone(result.target["timeout_seconds"])
+        self.assertEqual(transport.timeouts, [None])
+
+    def test_execute_passes_timeout_to_transport_and_result(self) -> None:
+        transport = FakeTransport(CommandResult(exit_code=0, stdout="ok\n", stderr=""))
+        provider = WindowsSSHProvider(transport)
+
+        result = provider.execute("Get-Date", timeout_seconds=12)
+
+        self.assertEqual(result.target["timeout_seconds"], 12)
+        self.assertEqual(result.data["timeout_seconds"], 12)
+        self.assertEqual(transport.timeouts, [12])
 
     def test_read_file_returns_content_in_structured_data(self) -> None:
         payload = json.dumps(

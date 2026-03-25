@@ -60,7 +60,60 @@ class CLITests(unittest.TestCase):
         self.assertEqual(payload["target"]["command"], "Write-Output hello")
         self.assertEqual(payload["target"]["cwd"], "C:\\Temp")
         self.assertEqual(payload["stdout"], "hello\n")
-        execute_mock.assert_called_once_with("lab-win", "Write-Output hello", cwd="C:\\Temp", password_override=None)
+        execute_mock.assert_called_once_with(
+            "lab-win",
+            "Write-Output hello",
+            cwd="C:\\Temp",
+            timeout_seconds=None,
+            password_override=None,
+        )
+
+    def test_exec_passes_timeout_seconds_through_to_service(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_path = Path(temp_dir) / "hosts.json"
+            registry = HostRegistry(registry_path)
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            result = RemoteOperationResult.from_command(
+                "exec",
+                CommandResult(exit_code=0, stdout="done\n", stderr=""),
+                target={"command": "Get-Date", "cwd": None, "timeout_seconds": 15},
+                data={"command": "Get-Date", "cwd": None, "timeout_seconds": 15},
+                host="lab-win",
+            )
+
+            with patch("remote_agent_bridge.cli.BridgeService.execute", return_value=result) as execute_mock:
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    exit_code = main(
+                        [
+                            "--registry-file",
+                            str(registry_path),
+                            "exec",
+                            "--timeout-seconds",
+                            "15",
+                            "lab-win",
+                            "--",
+                            "Get-Date",
+                        ]
+                    )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["target"]["timeout_seconds"], 15)
+        execute_mock.assert_called_once_with(
+            "lab-win",
+            "Get-Date",
+            cwd=None,
+            timeout_seconds=15,
+            password_override=None,
+        )
 
     def test_exec_reads_command_from_local_script_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -108,8 +161,41 @@ class CLITests(unittest.TestCase):
             "lab-win",
             "Write-Output 'hello'\nGet-ChildItem\n",
             cwd="C:\\Ops",
+            timeout_seconds=None,
             password_override=None,
         )
+
+    def test_exec_rejects_non_positive_timeout_seconds(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_path = Path(temp_dir) / "hosts.json"
+            registry = HostRegistry(registry_path)
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = main(
+                    [
+                        "--registry-file",
+                        str(registry_path),
+                        "exec",
+                        "--timeout-seconds",
+                        "0",
+                        "lab-win",
+                        "--",
+                        "Get-Date",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("--timeout-seconds must be a positive integer.", stderr.getvalue())
 
     def test_exec_rejects_missing_command_file_with_clear_error(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -35,6 +35,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.name,
                 command,
                 cwd=args.cwd,
+                timeout_seconds=_validate_timeout_seconds(args.timeout_seconds),
                 password_override=_password_for(service, args.name),
             )
             return _print_operation_result(result)
@@ -126,6 +127,11 @@ def build_parser() -> argparse.ArgumentParser:
     exec_parser = subparsers.add_parser("exec", help="Execute a PowerShell command.")
     exec_parser.add_argument("name", help="Host name.")
     exec_parser.add_argument("--cwd", help="Optional remote working directory before execution.")
+    exec_parser.add_argument(
+        "--timeout-seconds",
+        type=int,
+        help="Optional remote execution timeout in seconds.",
+    )
     exec_parser.add_argument(
         "--command-file",
         help="Local PowerShell script file to read and execute remotely.",
@@ -224,6 +230,14 @@ def _resolve_exec_command(args: argparse.Namespace) -> str:
             raise ValueError("The local command file is empty.")
         return command
     return inline_command
+
+
+def _validate_timeout_seconds(value: int | None) -> int | None:
+    if value is None:
+        return None
+    if value <= 0:
+        raise ValueError("--timeout-seconds must be a positive integer.")
+    return value
 
 
 def _resolve_write_content(args: argparse.Namespace) -> str:

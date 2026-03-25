@@ -15,7 +15,12 @@ class RemoteProvider(ABC):
         """Return basic host metadata if the connection is healthy."""
 
     @abstractmethod
-    def execute(self, command: str, cwd: str | None = None) -> RemoteOperationResult:
+    def execute(
+        self,
+        command: str,
+        cwd: str | None = None,
+        timeout_seconds: int | None = None,
+    ) -> RemoteOperationResult:
         """Execute a platform-native command, optionally inside a remote working directory."""
 
     @abstractmethod

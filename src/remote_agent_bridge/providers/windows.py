@@ -35,7 +35,12 @@ class WindowsSSHProvider(RemoteProvider):
         payload = json.loads(result.stdout)
         return RemoteOperationResult.from_command("probe", result, data=payload)
 
-    def execute(self, command: str, cwd: str | None = None) -> RemoteOperationResult:
+    def execute(
+        self,
+        command: str,
+        cwd: str | None = None,
+        timeout_seconds: int | None = None,
+    ) -> RemoteOperationResult:
         """Execute a PowerShell command and return the raw result envelope."""
         cwd_block = ""
         if cwd:
@@ -55,12 +60,12 @@ class WindowsSSHProvider(RemoteProvider):
         $ErrorActionPreference = 'Stop'{cwd_block}
         {command}
         """
-        result = self._run_powershell(script)
+        result = self._run_powershell(script, timeout=timeout_seconds)
         return RemoteOperationResult.from_command(
             "exec",
             result,
-            target={"command": command, "cwd": cwd},
-            data={"command": command, "cwd": cwd},
+            target={"command": command, "cwd": cwd, "timeout_seconds": timeout_seconds},
+            data={"command": command, "cwd": cwd, "timeout_seconds": timeout_seconds},
         )
 
     def read_file(self, path: str, encoding: str = "utf-8") -> RemoteOperationResult:
@@ -300,12 +305,17 @@ class WindowsSSHProvider(RemoteProvider):
         """Close the underlying transport."""
         self.transport.close()
 
-    def _run_powershell(self, script: str, check: bool = False) -> CommandResult:
+    def _run_powershell(
+        self,
+        script: str,
+        check: bool = False,
+        timeout: int | None = None,
+    ) -> CommandResult:
         command = (
             "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "
             f"{self._encode_powershell(script)}"
         )
-        result = self.transport.run(command)
+        result = self.transport.run(command, timeout=timeout)
         if check and result.exit_code != 0:
             raise CommandExecutionError("Remote PowerShell command failed.", result)
         return result

@@ -22,12 +22,17 @@ class FakeProvider:
             data={"computer_name": "LAB"},
         )
 
-    def execute(self, command: str, cwd: str | None = None) -> RemoteOperationResult:
+    def execute(
+        self,
+        command: str,
+        cwd: str | None = None,
+        timeout_seconds: int | None = None,
+    ) -> RemoteOperationResult:
         return RemoteOperationResult.from_command(
             "exec",
             CommandResult(exit_code=0, stdout="done", stderr=""),
-            target={"command": command, "cwd": cwd},
-            data={"command": command, "cwd": cwd},
+            target={"command": command, "cwd": cwd, "timeout_seconds": timeout_seconds},
+            data={"command": command, "cwd": cwd, "timeout_seconds": timeout_seconds},
         )
 
     def read_file(self, path: str, encoding: str = "utf-8") -> RemoteOperationResult:
@@ -109,12 +114,13 @@ class BridgeServiceTests(unittest.TestCase):
             provider = FakeProvider()
             service = BridgeService(registry, factory=FakeFactory(provider))
 
-            result = service.execute("lab-win", "Get-Date", cwd="C:\\Temp")
+            result = service.execute("lab-win", "Get-Date", cwd="C:\\Temp", timeout_seconds=20)
 
             self.assertEqual(result.host, "lab-win")
             self.assertEqual(result.operation, "exec")
             self.assertEqual(result.target["command"], "Get-Date")
             self.assertEqual(result.target["cwd"], "C:\\Temp")
+            self.assertEqual(result.target["timeout_seconds"], 20)
             self.assertTrue(provider.closed)
 
     def test_search_text_tags_result_with_host(self) -> None:

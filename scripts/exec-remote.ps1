@@ -6,7 +6,9 @@ param(
 
     [string]$ScriptFile,
 
-    [string]$Cwd
+    [string]$Cwd,
+
+    [int]$TimeoutSeconds
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,6 +29,13 @@ if (-not [string]::IsNullOrWhiteSpace($Cwd)) {
 
 if (-not [string]::IsNullOrWhiteSpace($ScriptFile)) {
     $pythonArgs += @("--command-file", $ScriptFile)
+}
+
+if ($PSBoundParameters.ContainsKey('TimeoutSeconds')) {
+    if ($TimeoutSeconds -le 0) {
+        throw "-TimeoutSeconds must be a positive integer."
+    }
+    $pythonArgs += @("--timeout-seconds", $TimeoutSeconds)
 }
 
 $pythonArgs += $Name

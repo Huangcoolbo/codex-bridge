@@ -45,12 +45,17 @@ class BridgeService:
         name: str,
         command: str,
         cwd: Optional[str] = None,
+        timeout_seconds: Optional[int] = None,
         password_override: Optional[str] = None,
     ) -> RemoteOperationResult:
         """Execute a remote command on a host."""
         provider = self.factory.create(self.get_host(name), password_override=password_override)
         try:
-            return provider.execute(command, cwd=cwd).with_host(name)
+            return provider.execute(
+                command,
+                cwd=cwd,
+                timeout_seconds=timeout_seconds,
+            ).with_host(name)
         finally:
             provider.close()
 
