@@ -35,46 +35,38 @@ pip install -e .
 
 ## Quick Start
 
-Add a Windows host using key auth:
+Use the ready-made PowerShell scripts for common tasks.
 
-```bash
-remote-agent-bridge host add lab-win ^
-  --hostname 192.168.1.50 ^
-  --username admin ^
-  --auth key ^
-  --key-path C:\Users\you\.ssh\id_ed25519
+### 1. Initialize the project environment
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\init.ps1
 ```
 
-Add a host using password auth but prompt at runtime instead of storing the password:
+### 2. Add a Windows host with key auth
 
-```bash
-remote-agent-bridge host add lab-win-password ^
-  --hostname 192.168.1.51 ^
-  --username admin ^
-  --auth password
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\add-windows-host.ps1 `
+  -Name lab-win `
+  -HostName 192.168.1.50 `
+  -UserName admin `
+  -Auth key `
+  -KeyPath C:\Users\you\.ssh\id_ed25519
 ```
 
-Store a password in the local project registry only if you explicitly choose to:
+### 3. List registered hosts
 
-```bash
-remote-agent-bridge host add lab-win-stored ^
-  --hostname 192.168.1.52 ^
-  --username admin ^
-  --auth password ^
-  --store-password
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\list-hosts.ps1
 ```
 
-List registered hosts:
+### 4. Probe a host
 
-```bash
-remote-agent-bridge host list
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\probe-host.ps1 -Name lab-win
 ```
 
-Probe a host:
-
-```bash
-remote-agent-bridge probe lab-win
-```
+### 5. Optional: use the CLI directly
 
 Run a PowerShell command:
 

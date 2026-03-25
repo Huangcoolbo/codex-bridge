@@ -13,6 +13,20 @@
         "key_path": "C:/Users/test/.ssh/id_ed25519"
       },
       "description": null
+    },
+    {
+      "name": "script-win",
+      "hostname": "10.0.0.8",
+      "username": "admin",
+      "port": 22,
+      "platform": "windows",
+      "transport": "ssh",
+      "auth": {
+        "method": "key",
+        "password": null,
+        "key_path": "C:\\Users\\test\\.ssh\\id_ed25519"
+      },
+      "description": null
     }
   ]
 }

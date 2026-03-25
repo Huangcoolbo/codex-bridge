@@ -41,50 +41,52 @@ pip install -e .
 
 ## 快速开始
 
-### 1. 添加一台远程 Windows（密钥方式）
+常用流程现在已经整理成现成脚本了，直接运行就行。
 
-```bash
-remote-agent-bridge host add lab-win ^
-  --hostname 192.168.1.50 ^
-  --username admin ^
-  --auth key ^
-  --key-path C:\Users\you\.ssh\id_ed25519
+### 1. 初始化本地环境
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\init.ps1
 ```
 
-### 2. 添加一台远程 Windows（密码方式）
+### 2. 添加一台远程 Windows（密钥方式）
 
-```bash
-remote-agent-bridge host add lab-win-password ^
-  --hostname 192.168.1.51 ^
-  --username admin ^
-  --auth password
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\add-windows-host.ps1 `
+  -Name lab-win `
+  -HostName 192.168.1.50 `
+  -UserName admin `
+  -Auth key `
+  -KeyPath C:\Users\you\.ssh\id_ed25519
 ```
 
 ### 3. 查看已经保存的主机
 
-```bash
-remote-agent-bridge host list
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\list-hosts.ps1
 ```
 
 ### 4. 检查远程主机是否可用
 
-```bash
-remote-agent-bridge probe lab-win
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\probe-host.ps1 -Name lab-win
 ```
 
-### 5. 在远程 Windows 上执行命令
+### 5. 如果你想直接用命令行
+
+在远程 Windows 上执行命令：
 
 ```bash
 remote-agent-bridge exec lab-win -- "Get-Process | Select-Object -First 5"
 ```
 
-### 6. 读取远程文件
+读取远程文件：
 
 ```bash
 remote-agent-bridge read-file lab-win C:\Windows\System32\drivers\etc\hosts
 ```
 
-### 7. 查看远程目录
+查看远程目录：
 
 ```bash
 remote-agent-bridge list-dir lab-win C:\Users\Public
