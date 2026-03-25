@@ -30,9 +30,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             payload = service.probe(args.name, password_override=_password_for(service, args.name))
             return _print_operation_result(payload)
         if args.command == "exec":
-            command = " ".join(args.remote_command).strip()
-            if not command:
-                parser.error("exec requires a remote command after '--'.")
+            command = _resolve_exec_command(args)
             result = service.execute(
                 args.name,
                 command,
@@ -118,6 +116,10 @@ def build_parser() -> argparse.ArgumentParser:
     exec_parser = subparsers.add_parser("exec", help="Execute a PowerShell command.")
     exec_parser.add_argument("name", help="Host name.")
     exec_parser.add_argument("--cwd", help="Optional remote working directory before execution.")
+    exec_parser.add_argument(
+        "--command-file",
+        help="Local PowerShell script file to read and execute remotely.",
+    )
     exec_parser.add_argument("remote_command", nargs=argparse.REMAINDER, help="Command after '--'.")
 
     read_parser = subparsers.add_parser("read-file", help="Read a text file from the remote host.")
@@ -189,11 +191,38 @@ def _print_operation_result(result: RemoteOperationResult) -> int:
     return result.exit_code
 
 
+def _resolve_exec_command(args: argparse.Namespace) -> str:
+    inline_command = " ".join(args.remote_command).strip()
+    has_inline = bool(inline_command)
+    has_file = args.command_file is not None
+    if has_inline == has_file:
+        raise ValueError("Provide exactly one of a remote command after '--' or --command-file.")
+    if has_file:
+        command = _read_local_text_file(Path(args.command_file), encoding="utf-8-sig", label="command file")
+        if not command.strip():
+            raise ValueError("The local command file is empty.")
+        return command
+    return inline_command
+
+
 def _resolve_write_content(args: argparse.Namespace) -> str:
     has_inline = args.content is not None
     has_file = args.content_file is not None
     if has_inline == has_file:
         raise ValueError("Provide exactly one of --content or --content-file.")
     if has_file:
-        return Path(args.content_file).read_text(encoding=args.encoding)
+        return _read_local_text_file(Path(args.content_file), encoding=args.encoding, label="content file")
     return str(args.content)
+
+
+def _read_local_text_file(path: Path, *, encoding: str, label: str) -> str:
+    try:
+        return path.read_text(encoding=encoding)
+    except FileNotFoundError as error:
+        raise ValueError(f"Local {label} not found: {path}") from error
+    except UnicodeDecodeError as error:
+        raise ValueError(
+            f"Failed to decode local {label} '{path}' with encoding {encoding!r}: {error}"
+        ) from error
+    except OSError as error:
+        raise ValueError(f"Failed to read local {label} '{path}': {error}") from error

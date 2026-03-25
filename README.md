@@ -13,7 +13,7 @@ The first concrete implementation is Windows over OpenSSH. The structure is inte
 
 - host profile registry stored locally in `data/hosts.json`
 - provider/adapter architecture with a Windows provider over an SSH transport
-- CLI commands for `host add`, `host list`, `probe`, `exec`, `read-file`, `list-dir`, and `write-file`
+- CLI commands for `host add`, `host list`, `probe`, `exec`, `read-file`, `list-dir`, and `write-file`, with `exec` supporting inline commands or a local PowerShell script file
 - consistent JSON result envelope across `probe`, `exec`, `read-file`, `list-dir`, and `write-file`
 - password or key-based SSH auth in the host schema
 - runtime password prompting when the profile omits a stored password
@@ -107,7 +107,7 @@ For `read-file`, the bridge now returns file metadata together with text content
 
 For `list-dir`, the bridge now verifies that the target exists and is really a directory, then returns the normalized directory path, item count, and per-entry type metadata so a caller can safely chain follow-up operations.
 
-For `exec`, the bridge now forces PowerShell to stop on command errors, emits UTF-8 output, and can optionally switch into a validated remote working directory first, so remote failures and multi-step command chaining are easier to judge from one result.
+For `exec`, the bridge now forces PowerShell to stop on command errors, emits UTF-8 output, can optionally switch into a validated remote working directory first, and can read a local PowerShell script file before sending it to the remote host, so remote failures and multi-step command chaining are easier to judge from one result.
 
 For `write-file`, the bridge now checks that the parent path is really a directory, rejects writing into a directory path by mistake, and returns the final normalized path, byte count, and last write time after the file is written.
 
@@ -222,4 +222,5 @@ python -m pytest -q
 - add richer Windows operations such as upload, download, and service control
 - support alternate config locations and secret backends
 - add Android transport and provider implementations
+
 

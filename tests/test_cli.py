@@ -6,7 +6,7 @@ import io
 import json
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -61,6 +61,85 @@ class CLITests(unittest.TestCase):
         self.assertEqual(payload["target"]["cwd"], "C:\\Temp")
         self.assertEqual(payload["stdout"], "hello\n")
         execute_mock.assert_called_once_with("lab-win", "Write-Output hello", cwd="C:\\Temp", password_override=None)
+
+    def test_exec_reads_command_from_local_script_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_path = Path(temp_dir) / "hosts.json"
+            script_path = Path(temp_dir) / "remote.ps1"
+            script_path.write_text("Write-Output 'hello'\nGet-ChildItem\n", encoding="utf-8")
+            registry = HostRegistry(registry_path)
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            result = RemoteOperationResult.from_command(
+                "exec",
+                CommandResult(exit_code=0, stdout="hello\n", stderr=""),
+                target={"command": script_path.read_text(encoding="utf-8"), "cwd": "C:\\Ops"},
+                data={"command": script_path.read_text(encoding="utf-8"), "cwd": "C:\\Ops"},
+                host="lab-win",
+            )
+
+            with patch("remote_agent_bridge.cli.BridgeService.execute", return_value=result) as execute_mock:
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    exit_code = main(
+                        [
+                            "--registry-file",
+                            str(registry_path),
+                            "exec",
+                            "--cwd",
+                            "C:\\Ops",
+                            "--command-file",
+                            str(script_path),
+                            "lab-win",
+                        ]
+                    )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["operation"], "exec")
+        self.assertEqual(payload["target"]["cwd"], "C:\\Ops")
+        execute_mock.assert_called_once_with(
+            "lab-win",
+            "Write-Output 'hello'\nGet-ChildItem\n",
+            cwd="C:\\Ops",
+            password_override=None,
+        )
+
+    def test_exec_rejects_missing_command_file_with_clear_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_path = Path(temp_dir) / "hosts.json"
+            registry = HostRegistry(registry_path)
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = main(
+                    [
+                        "--registry-file",
+                        str(registry_path),
+                        "exec",
+                        "--command-file",
+                        str(Path(temp_dir) / "missing.ps1"),
+                        "lab-win",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Local command file not found", stderr.getvalue())
 
 
 if __name__ == "__main__":
