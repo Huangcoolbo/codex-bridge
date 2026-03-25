@@ -1,10 +1,10 @@
-# remote-agent-bridge Project Design (v1)
+# codex-bridge Project Design (v1)
 
 [中文版本](./PROJECT_DESIGN.zh-CN.md)
 
 ## 1. Project Goal
 
-`remote-agent-bridge` is not meant to analyze remote-machine problems by itself. Its purpose is to act as a bridge that extends the **operating reach of local Codex to a remote machine**.
+`codex-bridge` is not meant to analyze remote-machine problems by itself. Its purpose is to act as a bridge that extends the **operating reach of local Codex to a remote machine**.
 
 Its core position is:
 

@@ -1,8 +1,8 @@
-# remote-agent-bridge 中文说明
+# codex-bridge 中文说明
 
 [English README](./README.md)
 
-`remote-agent-bridge` 是一个用 Python 写的最小可用项目，目标是让本地电脑用统一的方式去连接和操作远程机器。
+`codex-bridge` 是一个用 Python 写的最小可用项目，目标是让本地电脑用统一的方式去连接和操作远程机器。
 
 当前第一步已经做的是：**通过 OpenSSH 远程操作 Windows 电脑**。
 

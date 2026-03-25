@@ -1,4 +1,4 @@
-"""remote-agent-bridge package."""
+"""codex-bridge package."""
 
 __all__ = ["__version__"]
 

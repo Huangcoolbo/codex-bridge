@@ -1,4 +1,4 @@
-# remote-agent-bridge TODO
+# codex-bridge TODO
 
 状态说明：
 

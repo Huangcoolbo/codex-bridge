@@ -1,4 +1,4 @@
-"""Platform providers for remote-agent-bridge."""
+"""Platform providers for codex-bridge."""
 
 from remote_agent_bridge.providers.base import RemoteProvider
 

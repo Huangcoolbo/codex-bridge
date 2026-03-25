@@ -1,4 +1,4 @@
-"""CLI entrypoint for remote-agent-bridge."""
+"""CLI entrypoint for codex-bridge."""
 
 from __future__ import annotations
 
@@ -88,7 +88,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     """Construct the top-level CLI parser."""
-    parser = argparse.ArgumentParser(prog="remote-agent-bridge")
+    parser = argparse.ArgumentParser(prog="codex-bridge")
     parser.add_argument(
         "--registry-file",
         type=Path,

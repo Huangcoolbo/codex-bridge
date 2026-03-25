@@ -1,8 +1,8 @@
-# remote-agent-bridge
+# codex-bridge
 
 [中文说明](./README.zh-CN.md) | [English](./README.md)
 
-`remote-agent-bridge` is a Python MVP for remote machine control with a clean separation between:
+`codex-bridge` is a Python MVP for remote machine control with a clean separation between:
 
 - providers, which model platform behavior such as Windows filesystem and PowerShell commands
 - adapters, which model transport behavior such as SSH

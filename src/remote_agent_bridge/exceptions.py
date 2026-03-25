@@ -6,7 +6,7 @@ from remote_agent_bridge.models import CommandResult
 
 
 class BridgeError(Exception):
-    """Base exception for remote-agent-bridge."""
+    """Base exception for codex-bridge."""
 
 
 class ProfileNotFoundError(BridgeError):

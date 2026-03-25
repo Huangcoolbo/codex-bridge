@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "remote-agent-bridge"
+name = "codex-bridge"
 version = "0.1.0"
 description = "MVP for remote host control with a provider/adapter architecture."
 readme = "README.md"
@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-remote-agent-bridge = "remote_agent_bridge.cli:main"
+codex-bridge = "remote_agent_bridge.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

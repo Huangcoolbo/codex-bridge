@@ -1,10 +1,10 @@
-# remote-agent-bridge 项目设计说明（第一版）
+# codex-bridge 项目设计说明（第一版）
 
 [English Version](./PROJECT_DESIGN.md)
 
 ## 1. 项目目标
 
-`remote-agent-bridge` 的目标不是自己替用户分析远程电脑上的问题，而是作为一座“桥”，把**本地 Codex 的操作能力延伸到远程电脑**。
+`codex-bridge` 的目标不是自己替用户分析远程电脑上的问题，而是作为一座“桥”，把**本地 Codex 的操作能力延伸到远程电脑**。
 
 它的核心定位是：
 
