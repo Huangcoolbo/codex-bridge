@@ -124,7 +124,9 @@ class WindowsSSHProviderTests(unittest.TestCase):
         command = transport.commands[0]
         encoded = command.rsplit(" ", 1)[-1]
         decoded = base64.b64decode(encoded).decode("utf-16le")
-        self.assertEqual(decoded, "Get-Date")
+        self.assertIn("[Console]::OutputEncoding", decoded)
+        self.assertIn("$ErrorActionPreference = 'Stop'", decoded)
+        self.assertIn("Get-Date", decoded)
         self.assertEqual(result.operation, "exec")
         self.assertEqual(result.target["command"], "Get-Date")
         self.assertEqual(result.stdout, "ok\n")
@@ -158,7 +160,15 @@ class WindowsSSHProviderTests(unittest.TestCase):
         self.assertEqual(result.data["last_write_time"], "2026-03-25T11:00:00.0000000+08:00")
 
     def test_write_file_embeds_base64_payload(self) -> None:
-        transport = FakeTransport(CommandResult(exit_code=0, stdout="", stderr=""))
+        payload = json.dumps(
+            {
+                "path": "C:\\Temp\\hello.txt",
+                "encoding": "utf-8",
+                "bytes_written": 11,
+                "last_write_time": "2026-03-25T12:00:00.0000000+08:00",
+            }
+        )
+        transport = FakeTransport(CommandResult(exit_code=0, stdout=payload, stderr=""))
         provider = WindowsSSHProvider(transport)
 
         result = provider.write_file("C:\\Temp\\hello.txt", "hello world", encoding="utf-8")
@@ -168,9 +178,29 @@ class WindowsSSHProviderTests(unittest.TestCase):
         decoded = base64.b64decode(encoded).decode("utf-16le")
         self.assertIn("WriteAllBytes", decoded)
         self.assertIn("aGVsbG8gd29ybGQ=", decoded)
+        self.assertIn("Remote parent path is a file, not a directory", decoded)
+        self.assertIn("Remote write target is a directory, not a file", decoded)
+        self.assertIn("last_write_time", decoded)
         self.assertIn("C:\\Temp\\hello.txt", decoded)
         self.assertEqual(result.operation, "write-file")
+        self.assertEqual(result.data["path"], "C:\\Temp\\hello.txt")
+        self.assertEqual(result.data["encoding"], "utf-8")
         self.assertEqual(result.data["bytes_written"], len("hello world".encode("utf-8")))
+        self.assertEqual(result.data["last_write_time"], "2026-03-25T12:00:00.0000000+08:00")
+
+    def test_write_file_raises_structured_error_on_failure(self) -> None:
+        transport = FakeTransport(
+            CommandResult(exit_code=1, stdout="", stderr="Remote write target is a directory, not a file: C:\\Temp")
+        )
+        provider = WindowsSSHProvider(transport)
+
+        with self.assertRaises(CommandExecutionError) as context:
+            provider.write_file("C:\\Temp", "hello world", encoding="utf-8")
+
+        self.assertEqual(
+            context.exception.result.stderr,
+            "Remote write target is a directory, not a file: C:\\Temp",
+        )
 
 
 if __name__ == "__main__":

@@ -37,7 +37,12 @@ class WindowsSSHProvider(RemoteProvider):
 
     def execute(self, command: str) -> RemoteOperationResult:
         """Execute a PowerShell command and return the raw result envelope."""
-        result = self._run_powershell(command)
+        script = f"""
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $ErrorActionPreference = 'Stop'
+        {command}
+        """
+        result = self._run_powershell(script)
         return RemoteOperationResult.from_command(
             "exec",
             result,
@@ -145,21 +150,53 @@ class WindowsSSHProvider(RemoteProvider):
 
     def write_file(self, path: str, content: str, encoding: str = "utf-8") -> RemoteOperationResult:
         """Write text content to a file on the remote host."""
-        encoded_content = base64.b64encode(content.encode(self._python_encoding(encoding))).decode("ascii")
+        python_encoding = self._python_encoding(encoding)
+        encoded_content = base64.b64encode(content.encode(python_encoding)).decode("ascii")
         script = f"""
-        $parent = Split-Path -Parent {self._ps_literal(path)}
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $path = {self._ps_literal(path)}
+        $parent = Split-Path -Parent $path
         if ($parent) {{
-          New-Item -ItemType Directory -Path $parent -Force | Out-Null
+          if (Test-Path -LiteralPath $parent) {{
+            $parentItem = Get-Item -LiteralPath $parent -ErrorAction Stop
+            if (-not $parentItem.PSIsContainer) {{
+              throw "Remote parent path is a file, not a directory: $parent"
+            }}
+          }} else {{
+            New-Item -ItemType Directory -Path $parent -Force -ErrorAction Stop | Out-Null
+          }}
+        }}
+        if (Test-Path -LiteralPath $path) {{
+          $existingItem = Get-Item -LiteralPath $path -ErrorAction Stop
+          if ($existingItem.PSIsContainer) {{
+            throw "Remote write target is a directory, not a file: $path"
+          }}
         }}
         $bytes = [System.Convert]::FromBase64String({self._ps_literal(encoded_content)})
-        [System.IO.File]::WriteAllBytes({self._ps_literal(path)}, $bytes)
+        [System.IO.File]::WriteAllBytes($path, $bytes)
+        $item = Get-Item -LiteralPath $path -ErrorAction Stop
+        $payload = [ordered]@{{
+          path = $item.FullName
+          encoding = {self._ps_literal(encoding)}
+          bytes_written = $item.Length
+          last_write_time = if ($item.LastWriteTime) {{ $item.LastWriteTime.ToString('o') }} else {{ $null }}
+        }}
+        $payload | ConvertTo-Json -Depth 4
         """
         result = self._run_powershell(script, check=True)
+        payload = json.loads(result.stdout)
         return RemoteOperationResult.from_command(
             "write-file",
             result,
             target={"path": path, "encoding": encoding},
-            data={"path": path, "encoding": encoding, "bytes_written": len(content.encode(self._python_encoding(encoding)))},
+            data={
+                "path": str(payload.get("path", path)),
+                "encoding": str(payload.get("encoding", encoding)),
+                "bytes_written": int(payload["bytes_written"])
+                if payload.get("bytes_written") is not None
+                else len(content.encode(python_encoding)),
+                "last_write_time": payload.get("last_write_time"),
+            },
         )
 
     def close(self) -> None:
