@@ -5,7 +5,7 @@
 如果你已经知道 `codex-bridge` 是什么，只想尽快跑起来，这份文档给你最短路径。
 
 如果你还不确定它解决什么问题，先看仓库首页：
-[README.zh-CN.md](/D:/remote-agent-bridge/README.zh-CN.md)
+[README.md](../README.md)
 
 ## 1. 安装
 
@@ -94,7 +94,7 @@ curl -X POST http://127.0.0.1:8765/api/command/execute ^
 ## 5. Android 网关
 
 Android 已开放的正式 HTTP API 见：
-[AGENT_GATEWAY.md](/D:/remote-agent-bridge/AGENT_GATEWAY.md)
+[AGENT_GATEWAY.md](../AGENT_GATEWAY.md)
 
 你可以从这些入口开始：
 
@@ -109,10 +109,10 @@ Android 已开放的正式 HTTP API 见：
 ## 6. 更多文档
 
 - 产品首页：
-  [README.zh-CN.md](/D:/remote-agent-bridge/README.zh-CN.md)
+  [README.md](../README.md)
 - 网关接口：
-  [AGENT_GATEWAY.md](/D:/remote-agent-bridge/AGENT_GATEWAY.md)
+  [AGENT_GATEWAY.md](../AGENT_GATEWAY.md)
 - 项目设计：
-  [PROJECT_DESIGN.zh-CN.md](/D:/remote-agent-bridge/PROJECT_DESIGN.zh-CN.md)
+  [PROJECT_DESIGN.zh-CN.md](../PROJECT_DESIGN.zh-CN.md)
 - 真实联调状态：
-  [REAL_DEVICE_VALIDATION.zh-CN.md](/D:/remote-agent-bridge/REAL_DEVICE_VALIDATION.zh-CN.md)
+  [REAL_DEVICE_VALIDATION.zh-CN.md](../REAL_DEVICE_VALIDATION.zh-CN.md)

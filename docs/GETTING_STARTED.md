@@ -5,7 +5,7 @@
 If you already understand what `codex-bridge` is and just want the shortest path to running it, start here.
 
 If you still need the product-level overview first, read:
-[README.md](/D:/remote-agent-bridge/README.md)
+[README.en.md](../README.en.md)
 
 ## 1. Install
 
@@ -94,7 +94,7 @@ curl -X POST http://127.0.0.1:8765/api/command/execute \
 ## 5. Android Gateway
 
 The formal Android HTTP APIs are documented in:
-[AGENT_GATEWAY.md](/D:/remote-agent-bridge/AGENT_GATEWAY.md)
+[AGENT_GATEWAY.md](../AGENT_GATEWAY.md)
 
 Good starting points:
 
@@ -109,10 +109,10 @@ Good starting points:
 ## 6. More Documents
 
 - Product overview:
-  [README.md](/D:/remote-agent-bridge/README.md)
+  [README.en.md](../README.en.md)
 - Gateway API:
-  [AGENT_GATEWAY.md](/D:/remote-agent-bridge/AGENT_GATEWAY.md)
+  [AGENT_GATEWAY.md](../AGENT_GATEWAY.md)
 - Project design:
-  [PROJECT_DESIGN.md](/D:/remote-agent-bridge/PROJECT_DESIGN.md)
+  [PROJECT_DESIGN.md](../PROJECT_DESIGN.md)
 - Real-device status:
-  [REAL_DEVICE_VALIDATION.md](/D:/remote-agent-bridge/REAL_DEVICE_VALIDATION.md)
+  [REAL_DEVICE_VALIDATION.md](../REAL_DEVICE_VALIDATION.md)
