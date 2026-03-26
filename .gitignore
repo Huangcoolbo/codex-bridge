@@ -3,4 +3,12 @@ __pycache__/
 .pytest_cache/
 *.pyc
 data/*.local.json
-
+data/hosts.json
+data/known_hosts
+data/client-bootstrap.log
+data/android-pulls/
+data/staging/
+data/ssh/
+desktop-client/node_modules/
+desktop-client/out/
+skills/

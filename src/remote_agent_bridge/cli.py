@@ -121,12 +121,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     add_parser = host_subparsers.add_parser("add", help="Add or update a host profile.")
     add_parser.add_argument("name", help="Logical host name.")
-    add_parser.add_argument("--hostname", required=True, help="SSH hostname or IP.")
-    add_parser.add_argument("--username", required=True, help="SSH username.")
+    add_parser.add_argument("--hostname", required=True, help="SSH hostname/IP or Android adb device serial.")
+    add_parser.add_argument("--username", help="SSH username. Optional for android/adb, defaults to 'shell'.")
     add_parser.add_argument("--port", type=int, default=22, help="SSH port.")
     add_parser.add_argument("--platform", default="windows", help="Target platform name.")
     add_parser.add_argument("--transport", default="ssh", help="Transport type.")
-    add_parser.add_argument("--auth", choices=["password", "key"], default="key", help="Auth mode.")
+    add_parser.add_argument("--auth", choices=["password", "key"], default="key", help="Auth mode for SSH-based transports.")
     add_parser.add_argument("--key-path", help="SSH key path for key auth.")
     add_parser.add_argument(
         "--store-password",
@@ -140,7 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
     probe_parser = subparsers.add_parser("probe", help="Probe a remote host.")
     probe_parser.add_argument("name", help="Host name.")
 
-    exec_parser = subparsers.add_parser("exec", help="Execute a PowerShell command.")
+    exec_parser = subparsers.add_parser("exec", help="Execute a remote command.")
     exec_parser.add_argument("name", help="Host name.")
     exec_parser.add_argument("--cwd", help="Optional remote working directory before execution.")
     exec_parser.add_argument(
@@ -150,7 +150,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     exec_parser.add_argument(
         "--command-file",
-        help="Local PowerShell script file to read and execute remotely.",
+        help="Local command script file to read and execute remotely.",
     )
     exec_parser.add_argument("remote_command", nargs=argparse.REMAINDER, help="Command after '--'.")
 
@@ -197,16 +197,30 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _handle_host_command(service: BridgeService, args: argparse.Namespace) -> int:
     if args.host_command == "add":
-        if args.auth == "password" and args.key_path:
-            raise ValueError("--key-path cannot be used with password auth.")
-        if args.auth == "key" and args.store_password:
-            raise ValueError("--store-password only applies to password auth.")
+        is_android_adb = args.platform == "android" and args.transport == "adb"
+        if is_android_adb:
+            if args.auth != "key":
+                raise ValueError("--auth password is not supported with android/adb.")
+            if args.store_password:
+                raise ValueError("--store-password is not supported with android/adb.")
+            if args.key_path:
+                raise ValueError("--key-path is not used with android/adb.")
+            username = args.username or "shell"
+            password = None
+        else:
+            if not args.username:
+                raise ValueError("--username is required unless using android/adb.")
+            if args.auth == "password" and args.key_path:
+                raise ValueError("--key-path cannot be used with password auth.")
+            if args.auth == "key" and args.store_password:
+                raise ValueError("--store-password only applies to password auth.")
+            username = args.username
+            password = getpass.getpass("Password: ") if args.store_password else None
 
-        password = getpass.getpass("Password: ") if args.store_password else None
         profile = HostProfile(
             name=args.name,
             hostname=args.hostname,
-            username=args.username,
+            username=username,
             port=args.port,
             platform=args.platform,
             transport=args.transport,
@@ -223,10 +237,15 @@ def _handle_host_command(service: BridgeService, args: argparse.Namespace) -> in
             print("No hosts registered.")
             return 0
         for profile in profiles:
-            target = f"{profile.username}@{profile.hostname}:{profile.port}"
+            if profile.transport == "adb":
+                target = profile.hostname
+                auth_method = "adb"
+            else:
+                target = f"{profile.username}@{profile.hostname}:{profile.port}"
+                auth_method = profile.auth.method
             print(
                 f"{profile.name}\t{profile.platform}/{profile.transport}\t"
-                f"{profile.auth.method}\t{target}"
+                f"{auth_method}\t{target}"
             )
         return 0
 
@@ -235,6 +254,8 @@ def _handle_host_command(service: BridgeService, args: argparse.Namespace) -> in
 
 def _password_for(service: BridgeService, host_name: str) -> str | None:
     profile = service.get_host(host_name)
+    if profile.transport == "adb":
+        return None
     if profile.auth.method == "password" and not profile.auth.password:
         return getpass.getpass(f"Password for {profile.username}@{profile.hostname}: ")
     return None

@@ -561,5 +561,36 @@ class CLITests(unittest.TestCase):
         self.assertIn("Failed to parse workflow file", stderr.getvalue())
 
 
+    def test_host_add_defaults_android_adb_username_to_shell(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_path = Path(temp_dir) / "hosts.json"
+            stdout = io.StringIO()
+            with redirect_stdout(stdout):
+                exit_code = main(
+                    [
+                        "--registry-file",
+                        str(registry_path),
+                        "host",
+                        "add",
+                        "pixel",
+                        "--hostname",
+                        "emulator-5554",
+                        "--platform",
+                        "android",
+                        "--transport",
+                        "adb",
+                    ]
+                )
+
+            registry = HostRegistry(registry_path)
+            profile = registry.get_profile("pixel")
+
+        self.assertEqual(exit_code, 0)
+        self.assertIsNotNone(profile)
+        assert profile is not None
+        self.assertEqual(profile.username, "shell")
+        self.assertEqual(profile.platform, "android")
+        self.assertEqual(profile.transport, "adb")
 if __name__ == "__main__":
     unittest.main()
+

@@ -17,6 +17,11 @@ class ProviderFactory:
             from remote_agent_bridge.providers.windows import WindowsSSHProvider
 
             return WindowsSSHProvider(SSHTransportAdapter(effective_profile))
+        if effective_profile.platform == "android" and effective_profile.transport == "adb":
+            from remote_agent_bridge.adapters.adb import ADBTransportAdapter
+            from remote_agent_bridge.providers.android import AndroidADBProvider
+
+            return AndroidADBProvider(ADBTransportAdapter(effective_profile))
         raise ValueError(
             "Unsupported host configuration: "
             f"platform={effective_profile.platform!r}, transport={effective_profile.transport!r}"

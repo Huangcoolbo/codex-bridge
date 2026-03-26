@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from remote_agent_bridge.exceptions import WorkflowExecutionError
+from remote_agent_bridge.exceptions import CommandExecutionError, WorkflowExecutionError
 from remote_agent_bridge.models import (
     AuthConfig,
     CommandResult,
@@ -21,6 +21,7 @@ from remote_agent_bridge.storage import HostRegistry
 class FakeProvider:
     def __init__(self) -> None:
         self.closed = False
+        self.fail_read_file = False
 
     def probe(self) -> RemoteOperationResult:
         return RemoteOperationResult.from_command(
@@ -50,6 +51,11 @@ class FakeProvider:
         )
 
     def read_file(self, path: str, encoding: str = "utf-8") -> RemoteOperationResult:
+        if self.fail_read_file:
+            raise CommandExecutionError(
+                "Remote PowerShell command failed.",
+                CommandResult(exit_code=2, stdout="", stderr=f"Remote file not found: {path}"),
+            )
         return RemoteOperationResult.from_command(
             "read-file",
             CommandResult(exit_code=0, stdout='{"content_base64":"Y29udGVudA=="}', stderr=""),
@@ -264,6 +270,39 @@ class BridgeServiceTests(unittest.TestCase):
             self.assertEqual(result.stderr, "boom")
             self.assertTrue(provider.closed)
 
+    def test_workflow_wraps_provider_command_errors_with_partial_results(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry = HostRegistry(Path(temp_dir) / "hosts.json")
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            provider = FakeProvider()
+            provider.fail_read_file = True
+            service = BridgeService(registry, factory=FakeFactory(provider))
+
+            with self.assertRaises(WorkflowExecutionError) as context:
+                service.workflow(
+                    "lab-win",
+                    [
+                        {"operation": "probe"},
+                        {"operation": "read-file", "path": "C:\\Temp\\missing.log"},
+                    ],
+                )
+
+            result = context.exception.result
+            self.assertEqual(result.exit_code, 2)
+            self.assertEqual(result.data["completed_step_count"], 1)
+            self.assertEqual(result.data["steps"][0].operation, "probe")
+            self.assertEqual(result.data["failed_step"].operation, "read-file")
+            self.assertEqual(result.data["failed_step"].target["path"], "C:\\Temp\\missing.log")
+            self.assertIn("Remote file not found", result.data["failed_step"].stderr)
+            self.assertTrue(provider.closed)
+
     def test_workflow_can_reference_previous_step_results(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             registry = HostRegistry(Path(temp_dir) / "hosts.json")
@@ -307,7 +346,7 @@ class BridgeServiceTests(unittest.TestCase):
             provider = FakeProvider()
             service = BridgeService(registry, factory=FakeFactory(provider))
 
-            with self.assertRaises(ValueError) as context:
+            with self.assertRaises(WorkflowExecutionError) as context:
                 service.workflow(
                     "lab-win",
                     [
@@ -316,7 +355,41 @@ class BridgeServiceTests(unittest.TestCase):
                     ],
                 )
 
-            self.assertIn("Workflow template path not found", str(context.exception))
+            result = context.exception.result
+            self.assertIn("Workflow template path not found", result.data["failed_step"].stderr)
+            self.assertEqual(result.data["completed_step_count"], 1)
+            self.assertEqual(result.data["failed_step"].operation, "read-file")
+            self.assertEqual(result.data["failed_step"].target["path"], "{{ steps[0].data.missing }}")
+            self.assertTrue(provider.closed)
+
+    def test_workflow_rejects_invalid_template_syntax_with_partial_results(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry = HostRegistry(Path(temp_dir) / "hosts.json")
+            registry.save_profile(
+                HostProfile(
+                    name="lab-win",
+                    hostname="192.168.1.50",
+                    username="admin",
+                    auth=AuthConfig(method="key", key_path="C:\\keys\\id_ed25519"),
+                )
+            )
+            provider = FakeProvider()
+            service = BridgeService(registry, factory=FakeFactory(provider))
+
+            with self.assertRaises(WorkflowExecutionError) as context:
+                service.workflow(
+                    "lab-win",
+                    [
+                        {"operation": "probe"},
+                        {"operation": "write-file", "path": "C:\\Temp\\summary.txt", "content": "{{ steps[0]data.computer_name }}"},
+                    ],
+                )
+
+            result = context.exception.result
+            self.assertEqual(result.data["completed_step_count"], 1)
+            self.assertEqual(result.data["failed_step"].operation, "write-file")
+            self.assertIn("Invalid workflow template path syntax", result.data["failed_step"].stderr)
+            self.assertEqual(result.data["failed_step"].target["content"], "{{ steps[0]data.computer_name }}")
             self.assertTrue(provider.closed)
 
     def test_workflow_can_reference_dataclass_items_inside_result_lists(self) -> None:
@@ -388,7 +461,7 @@ class BridgeServiceTests(unittest.TestCase):
             provider = FakeProvider()
             service = BridgeService(registry, factory=FakeFactory(provider))
 
-            with self.assertRaises(ValueError) as context:
+            with self.assertRaises(WorkflowExecutionError) as context:
                 service.workflow(
                     "lab-win",
                     [
@@ -397,7 +470,8 @@ class BridgeServiceTests(unittest.TestCase):
                     ],
                 )
 
-            self.assertIn("Unsupported workflow template filter", str(context.exception))
+            result = context.exception.result
+            self.assertIn("Unsupported workflow template filter", result.data["failed_step"].stderr)
             self.assertTrue(provider.closed)
 
 

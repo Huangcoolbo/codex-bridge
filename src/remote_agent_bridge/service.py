@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-from remote_agent_bridge.exceptions import ProfileNotFoundError, WorkflowExecutionError
+from remote_agent_bridge.exceptions import (
+    CommandExecutionError,
+    ProfileNotFoundError,
+    WorkflowExecutionError,
+)
 from remote_agent_bridge.factory import ProviderFactory
 from remote_agent_bridge.models import CommandResult, HostProfile, RemoteOperationResult
 from remote_agent_bridge.storage import HostRegistry
 
 _TEMPLATE_PATTERN = re.compile(r"\{\{\s*(.+?)\s*\}\}")
-_PATH_TOKEN_PATTERN = re.compile(r"([^.\[\]]+)|\[(\d+)\]")
+_KEY_TOKEN_PATTERN = re.compile(r"[^.\[\]]+")
+_INDEX_TOKEN_PATTERN = re.compile(r"\[(\d+)\]")
 
 
 class BridgeService:
@@ -144,27 +149,32 @@ class BridgeService:
         try:
             results: List[RemoteOperationResult] = []
             for index, step in enumerate(steps):
-                resolved_step = self._resolve_workflow_templates(step, results)
-                step_result = self._run_workflow_step(provider, resolved_step).with_host(name)
-                if not step_result.success:
-                    workflow_result = RemoteOperationResult.from_command(
-                        "workflow",
-                        CommandResult(
-                            exit_code=step_result.exit_code,
-                            stdout=step_result.stdout,
-                            stderr=step_result.stderr,
-                        ),
-                        target={"step_count": len(steps)},
-                        data={
-                            "step_count": len(steps),
-                            "completed_step_count": len(results),
-                            "failed_step_index": index,
-                            "steps": results,
-                            "failed_step": step_result,
-                        },
+                resolved_step = step
+                try:
+                    resolved_step = self._resolve_workflow_templates(step, results)
+                    step_result = self._run_workflow_step(provider, resolved_step).with_host(name)
+                except CommandExecutionError as error:
+                    failed_step = self._workflow_command_failure_step(
+                        resolved_step,
+                        command=error.result,
+                        error_message=str(error),
                         host=name,
                     )
-                    raise WorkflowExecutionError("Workflow failed.", workflow_result)
+                    raise WorkflowExecutionError(
+                        "Workflow failed.",
+                        self._workflow_failure_result(name, steps, results, index, failed_step),
+                    ) from error
+                except ValueError as error:
+                    failed_step = self._workflow_validation_failure_step(step, str(error), host=name)
+                    raise WorkflowExecutionError(
+                        "Workflow failed.",
+                        self._workflow_failure_result(name, steps, results, index, failed_step),
+                    ) from error
+                if not step_result.success:
+                    raise WorkflowExecutionError(
+                        "Workflow failed.",
+                        self._workflow_failure_result(name, steps, results, index, step_result),
+                    )
                 results.append(step_result)
             return RemoteOperationResult.from_command(
                 "workflow",
@@ -292,8 +302,7 @@ class BridgeService:
 
     def _resolve_workflow_path(self, path: str, context: Any) -> Any:
         current = context
-        for match in _PATH_TOKEN_PATTERN.finditer(path):
-            key_token, index_token = match.groups()
+        for key_token, index_token in self._workflow_path_tokens(path):
             if key_token is not None:
                 current = self._workflow_template_value(current)
                 if isinstance(current, dict):
@@ -313,6 +322,111 @@ class BridgeService:
                     continue
                 raise ValueError(f"Workflow template path not found: {path}")
         return self._workflow_template_value(current)
+
+    def _workflow_path_tokens(self, path: str) -> List[Tuple[Optional[str], Optional[str]]]:
+        tokens: List[Tuple[Optional[str], Optional[str]]] = []
+        position = 0
+        length = len(path)
+        expecting_separator = False
+        while position < length:
+            if expecting_separator:
+                if path[position] == ".":
+                    position += 1
+                elif path[position] != "[":
+                    raise ValueError(f"Invalid workflow template path syntax: {path}")
+
+            if position >= length:
+                raise ValueError(f"Invalid workflow template path syntax: {path}")
+
+            index_match = _INDEX_TOKEN_PATTERN.match(path, position)
+            if index_match is not None:
+                tokens.append((None, index_match.group(1)))
+                position = index_match.end()
+                expecting_separator = True
+                continue
+
+            key_match = _KEY_TOKEN_PATTERN.match(path, position)
+            if key_match is not None:
+                tokens.append((key_match.group(0), None))
+                position = key_match.end()
+                expecting_separator = True
+                continue
+
+            raise ValueError(f"Invalid workflow template path syntax: {path}")
+
+        return tokens
+
+    def _workflow_failure_result(
+        self,
+        name: str,
+        steps: List[Dict[str, Any]],
+        results: List[RemoteOperationResult],
+        failed_step_index: int,
+        failed_step: RemoteOperationResult,
+    ) -> RemoteOperationResult:
+        return RemoteOperationResult.from_command(
+            "workflow",
+            CommandResult(
+                exit_code=failed_step.exit_code,
+                stdout=failed_step.stdout,
+                stderr=failed_step.stderr,
+            ),
+            target={"step_count": len(steps)},
+            data={
+                "step_count": len(steps),
+                "completed_step_count": len(results),
+                "failed_step_index": failed_step_index,
+                "steps": results,
+                "failed_step": failed_step,
+            },
+            host=name,
+        )
+
+    def _workflow_command_failure_step(
+        self,
+        step: Dict[str, Any],
+        *,
+        command: CommandResult,
+        error_message: str,
+        host: str,
+    ) -> RemoteOperationResult:
+        target = self._workflow_step_target(step)
+        data = dict(target)
+        data["error"] = error_message
+        return RemoteOperationResult.from_command(
+            self._workflow_step_operation(step),
+            command,
+            target=target,
+            data=data,
+            host=host,
+        )
+
+    def _workflow_validation_failure_step(
+        self,
+        step: Dict[str, Any],
+        error_message: str,
+        *,
+        host: str,
+    ) -> RemoteOperationResult:
+        target = self._workflow_step_target(step)
+        data = dict(target)
+        data["error"] = error_message
+        return RemoteOperationResult.from_command(
+            self._workflow_step_operation(step),
+            CommandResult(exit_code=1, stdout="", stderr=error_message),
+            target=target,
+            data=data,
+            host=host,
+        )
+
+    @staticmethod
+    def _workflow_step_operation(step: Dict[str, Any]) -> str:
+        operation = str(step.get("operation", "")).strip()
+        return operation or "workflow"
+
+    @staticmethod
+    def _workflow_step_target(step: Dict[str, Any]) -> Dict[str, Any]:
+        return {str(key): value for key, value in step.items() if key != "operation"}
 
     def _workflow_template_value(self, value: Any) -> Any:
         if isinstance(value, RemoteOperationResult):

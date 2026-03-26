@@ -1,324 +1,221 @@
 # codex-bridge
 
-[中文说明](./README.zh-CN.md) | [English](./README.md)
+[中文说明](./README.zh-CN.md)
 
-`codex-bridge` is a Python MVP for remote machine control with a clean separation between:
+> Make Codex do real remote work on Windows and Android instead of only suggesting commands.
 
-- providers, which model platform behavior such as Windows filesystem and PowerShell commands
-- adapters, which model transport behavior such as SSH
+## ✨ What This Is
 
-The first concrete implementation is Windows over OpenSSH. The structure is intended to support future Linux and Android providers without rewriting the CLI or host registry layers.
+`codex-bridge` is a local execution gateway for Codex / agents.
 
-## Features
+It brings these pieces together into one product surface:
 
-- host profile registry stored locally in `data/hosts.json`
-- provider/adapter architecture with a Windows provider over an SSH transport
-- CLI commands for `host add`, `host list`, `probe`, `exec`, `read-file`, `system-info`, `list-dir`, `write-file`, `search-text`, and `workflow`, with `exec` supporting inline commands, a local PowerShell script file, and an optional timeout
-- consistent JSON result envelope across `probe`, `exec`, `read-file`, `system-info`, `list-dir`, `write-file`, `search-text`, and `workflow`
-- password or key-based SSH auth in the host schema
-- runtime password prompting when the profile omits a stored password
-- basic tests for storage, service, CLI, and Windows provider behavior
+- Windows: SSH + PowerShell
+- Android: ADB + controlled APIs
+- Electron desktop client
+- local HTTP gateway
 
-## Requirements
+It is not a remote desktop tool, and it is not just a thin SSH/ADB wrapper.  
+The split is simple:
 
-- Python 3.8+
-- OpenSSH server enabled on the remote Windows machine
-- a reachable SSH account on that machine
-- host keys trusted in your local SSH known hosts file
+- the user asks for an outcome
+- Codex decides what to do
+- `codex-bridge` sends that action to the right remote path
 
-## Install
+## 🤔 What Problem It Solves
 
-```bash
-python -m venv .venv
-. .venv/Scripts/activate
-pip install -e .
-pip install pytest
-```
+Without a bridge like this, many “AI should help me operate a remote system” workflows collapse into:
 
-If you run tests from a fresh checkout, `pytest.ini` and `tests/conftest.py` now make the `src` layout work without requiring a manual `PYTHONPATH=src` step.
+- manually switching between SSH and adb
+- copying commands in and pasting results back out
+- AI giving advice without a stable way to execute it
+- scripts and one-off commands scattered across local machines
 
-## Quick Start
+`codex-bridge` fixes that by:
 
-Use the ready-made PowerShell scripts for common tasks.
+- registering targets once
+- exposing formal operations through a local gateway
+- returning structured results
+- opening Android writes gradually through controlled APIs instead of raw unrestricted shell
 
-Current helper scripts:
+## 👤 Who It Is For
 
-- `scripts/init.ps1`
-- `scripts/add-windows-host.ps1`
-- `scripts/list-hosts.ps1`
-- `scripts/probe-host.ps1`
-- `scripts/exec-remote.ps1`
-- `scripts/read-remote-file.ps1`
-- `scripts/system-info.ps1`
-- `scripts/list-remote-dir.ps1`
-- `scripts/write-remote-file.ps1`
-- `scripts/search-remote-text.ps1`
-- `scripts/run-remote-workflow.ps1`
+- people who want Codex to actually operate remote devices
+- people who work with both Windows and Android targets
+- people who do not want their workflow split across terminals, shell history, SSH, and adb
+- people who want a local gateway now and room to grow into Linux later
 
-### 1. Initialize the project environment
+## 🧠 What Codex Does Here
 
-This script uses **Python 3.13** by default. If an old environment already exists, it rebuilds it from scratch.
+The responsibility split is:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\init.ps1
-```
+- Codex thinks
+- `codex-bridge` connects and executes
+- remote devices return real results
 
-### 2. Add a Windows host with key auth
+A simple mental model:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\add-windows-host.ps1 `
-  -Name lab-win `
-  -HostName 192.168.1.50 `
-  -UserName admin `
-  -Auth key `
-  -KeyPath C:\Users\you\.ssh\id_ed25519
-```
+- Codex is the brain
+- `codex-bridge` is the arm
+- Windows / Android are the real systems being operated
 
-### 3. List registered hosts
+## 🚀 How a User Uses It
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\list-hosts.ps1
-```
+The shortest useful flow is only 3 steps:
 
-### 4. Probe a host
+1. Start the desktop client
+2. Save a Windows host or Android device
+3. Let Codex probe, read, execute, or write through the local gateway
+
+That means the user no longer needs to:
+
+- manually switch SSH sessions
+- type raw adb shell commands
+- copy paths around by hand
+- paste stdout/stderr back to Codex every time
+
+### Start the client first
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\probe-host.ps1 -Name lab-win
+powershell -ExecutionPolicy Bypass -File .\scripts\launch-bridge-client.ps1
 ```
 
-### 5. Optional: use the CLI directly
+Once it starts, you get two things:
 
-All remote operation commands now print the same JSON envelope shape:
+- a desktop client for human target setup and debugging
+- a local gateway for Codex / agents at `http://127.0.0.1:8765`
 
-```json
-{
-  "host": "lab-win",
-  "operation": "read-file",
-  "success": true,
-  "exit_code": 0,
-  "stdout": "raw remote stdout",
-  "stderr": "",
-  "target": {"path": "C:\\Temp\\notes.txt", "encoding": "utf-8"},
-  "data": {
-    "path": "C:\\Temp\\notes.txt",
-    "content": "...",
-    "encoding": "utf-8",
-    "size": 123,
-    "last_write_time": "2026-03-25T11:00:00+08:00"
-  }
-}
+If you just want the shortest path, keep reading here.  
+If you want the full install and startup flow, go to:
+[docs/GETTING_STARTED.md](/D:/remote-agent-bridge/docs/GETTING_STARTED.md)
+
+## 📦 What It Can Do Today
+
+### Windows
+
+- save targets
+- probe connectivity
+- execute PowerShell
+- return structured results
+
+### Android
+
+- list devices
+- read device info
+- list directories
+- read files
+- create directories
+- write text files
+- push local files
+
+### Gateway
+
+- list targets
+- manage current target / current Android device
+- probe
+- execute
+- read the last result
+
+## 🧪 Typical Scenarios
+
+### 1. Inspect a Windows machine
+
+The user says:
+“Find out why this Windows machine is failing.”
+
+Codex can:
+
+- select a target
+- probe connectivity
+- execute PowerShell
+- read `stdout / stderr / exit_code`
+
+### 2. Read files from an Android device
+
+The user says:
+“Show me what is in my phone’s Download folder.”
+
+Codex can:
+
+- list devices
+- inspect device info
+- list a directory
+- read files
+
+### 3. Perform controlled Android writes
+
+The user says:
+“Create a workspace in Documents on my phone and write a note into it.”
+
+Codex can already call:
+
+- `files/mkdir`
+- `files/write`
+- `files/push`
+
+Those writes are controlled product APIs, not unrestricted raw shell.
+
+## 🏗️ Architecture
+
+```text
+User
+  |
+  v
+Codex
+  |
+  v
+codex-bridge Desktop Client
+  |
+  +--> Renderer (human UI)
+  |
+  +--> Electron Main
+         |
+         +--> Local HTTP Gateway
+         |      |
+         |      +--> Target management
+         |      +--> Probe / Execute
+         |      +--> Android controlled APIs
+         |
+         +--> Service layer
+                |
+                +--> Windows bridge -> SSH -> PowerShell
+                |
+                +--> Android bridge -> ADB -> controlled file/device actions
 ```
 
-For `read-file`, the bridge now returns file metadata together with text content so a caller can decide the next remote step without issuing another stat command.
+## 🔌 Why It Is Better Than Manual SSH / ADB
 
-For `system-info`, the bridge now returns structured Windows machine details like OS version, current user, memory size, IPv4 addresses, and local drives so a caller can quickly judge the remote environment before deciding the next step.
+- it gives Codex formal interfaces instead of “please run this in a terminal”
+- it turns targets, state, and results into one consistent model
+- it supports both human UI debugging and agent-driven automation
+- it keeps Android write capabilities behind explicit boundaries
+- it is already shaped to grow into Linux support
 
-For `list-dir`, the bridge now verifies that the target exists and is really a directory, then returns the normalized directory path, item count, and per-entry type metadata so a caller can safely chain follow-up operations.
+## 📚 Docs
 
-For `exec`, the bridge now forces PowerShell to stop on command errors, emits UTF-8 output, can optionally switch into a validated remote working directory first, can apply a remote execution timeout, and can read a local PowerShell script file before sending it to the remote host, so remote failures and multi-step command chaining are easier to judge from one result.
+- Getting started:
+  [docs/GETTING_STARTED.md](/D:/remote-agent-bridge/docs/GETTING_STARTED.md)
+- Gateway API:
+  [AGENT_GATEWAY.md](/D:/remote-agent-bridge/AGENT_GATEWAY.md)
+- Project design:
+  [PROJECT_DESIGN.md](/D:/remote-agent-bridge/PROJECT_DESIGN.md)
+- Development notes:
+  [docs/DEVELOPMENT.md](/D:/remote-agent-bridge/docs/DEVELOPMENT.md)
+- Real-device status:
+  [REAL_DEVICE_VALIDATION.md](/D:/remote-agent-bridge/REAL_DEVICE_VALIDATION.md)
 
-For `write-file`, the bridge now checks that the parent path is really a directory, rejects writing into a directory path by mistake, and returns the final normalized path, byte count, and last write time after the file is written.
+## 📍 Current Status
 
-For `search-text`, the bridge can now search one remote file or a whole directory tree for a literal text pattern, and returns file count, match count, and matched lines so a caller can decide which remote file to inspect next.
+This repository is already beyond a pure concept demo:
 
-For `workflow`, the bridge can now run an ordered JSON step list in one call and return every sub-step as its own structured result, so a caller can batch a small remote investigation loop like search -> read-file -> system-info without losing per-step detail.
+- the localhost Windows SSH path is working
+- the Android USB debugging path is working on a real device
+- the Android gateway already supports read APIs plus the first controlled write APIs
+- the Electron client and HTTP gateway share the same underlying logic
 
-Workflow steps can now also reference earlier step results with `{{ ... }}` templates, so a later step can directly reuse a discovered path, line, or other returned field instead of hardcoding it ahead of time.
+## 🛣️ Next
 
-If a workflow stops in the middle, the CLI now returns a structured failure result that still includes the completed steps, the failed step index, and the failed step payload, so a caller can continue from the last good point instead of losing the whole execution context.
-
-Run a PowerShell command:
-
-```bash
-codex-bridge exec lab-win -- "Get-Process | Select-Object -First 5"
-```
-
-Run a PowerShell command inside a remote working directory:
-
-```bash
-codex-bridge exec --cwd C:\Temp lab-win -- "Get-ChildItem"
-```
-
-Run a PowerShell command with a remote timeout:
-
-```bash
-codex-bridge exec --timeout-seconds 15 lab-win -- "Get-Date"
-```
-
-Read a file:
-
-```bash
-codex-bridge read-file lab-win C:\Windows\System32\drivers\etc\hosts
-```
-
-Collect structured remote system information:
-
-```bash
-codex-bridge system-info lab-win
-```
-
-List a directory:
-
-```bash
-codex-bridge list-dir lab-win C:\Users\Public
-```
-
-Example `list-dir` result shape:
-
-```json
-{
-  "host": "lab-win",
-  "operation": "list-dir",
-  "success": true,
-  "exit_code": 0,
-  "stdout": "raw remote stdout",
-  "stderr": "",
-  "target": {"path": "C:\\Users\\Public"},
-  "data": {
-    "path": "C:\\Users\\Public",
-    "item_count": 2,
-    "entries": [
-      {
-        "name": "Documents",
-        "full_name": "C:\\Users\\Public\\Documents",
-        "mode": "d----",
-        "is_directory": true,
-        "length": null,
-        "last_write_time": "2026-03-25T10:00:00+08:00"
-      }
-    ]
-  }
-}
-```
-
-Write a file:
-
-```bash
-codex-bridge write-file lab-win C:\Temp\notes.txt --content "hello from codex-bridge"
-```
-
-Search text in one remote file or directory:
-
-```bash
-codex-bridge search-text lab-win C:\Logs ERROR --recurse
-```
-
-Run a multi-step remote workflow from a local JSON file:
-
-```bash
-codex-bridge workflow lab-win --workflow-file .\workflow.json
-```
-
-Example `workflow.json`:
-
-```json
-[
-  {"operation": "search-text", "path": "C:\\Logs", "pattern": "ERROR", "recurse": true},
-  {"operation": "read-file", "path": "{{ steps[0].data.matches[0].path }}"},
-  {"operation": "exec", "cwd": "C:\\Logs", "command": "Write-Output 'first hit: {{ steps[0].data.matches[0].line_number }}'"},
-  {"operation": "system-info"}
-]
-```
-
-Template expressions currently start from `steps`, for example:
-
-- `{{ steps[0].data.matches[0].path }}`
-- `{{ steps[1].target.path }}`
-- `prefix={{ steps[0].operation }}`
-
-Template expressions also support a simple `| to-json` filter when a later step needs the full structured result data as one JSON string, for example:
-
-- `{{ steps[0].data | to-json }}`
-- `{{ steps[2].data.matches | to-json }}`
-
-Example `search-text` result shape:
-
-```json
-{
-  "host": "lab-win",
-  "operation": "search-text",
-  "success": true,
-  "exit_code": 0,
-  "stdout": "raw remote stdout",
-  "stderr": "",
-  "target": {
-    "path": "C:\\Logs",
-    "pattern": "ERROR",
-    "encoding": "utf-8",
-    "recurse": true
-  },
-  "data": {
-    "path": "C:\\Logs",
-    "is_directory": true,
-    "recurse": true,
-    "pattern": "ERROR",
-    "encoding": "utf-8",
-    "file_count": 2,
-    "match_count": 1,
-    "matches": [
-      {
-        "path": "C:\\Logs\\app.log",
-        "line_number": 12,
-        "line": "ERROR failed to connect"
-      }
-    ]
-  }
-}
-```
-
-## Registry Format
-
-Host profiles live in `data/hosts.json` and follow this shape:
-
-```json
-{
-  "hosts": [
-    {
-      "name": "lab-win",
-      "platform": "windows",
-      "transport": "ssh",
-      "hostname": "192.168.1.50",
-      "port": 22,
-      "username": "admin",
-      "auth": {
-        "method": "key",
-        "key_path": "C:\\Users\\you\\.ssh\\id_ed25519",
-        "password": null
-      }
-    }
-  ]
-}
-```
-
-## Security Notes
-
-- Credentials are never hardcoded in source.
-- Password auth can be prompted at command runtime instead of being stored.
-- Stored passwords remain plain text in the local JSON registry for this MVP, so use that mode only when acceptable for your environment.
-- Unknown SSH host keys are rejected by default through Paramiko's system host key validation.
-
-## Development
-
-Run tests with:
-
-```bash
-$env:PYTHONPATH = "src"
-python -m unittest discover -s tests
-```
-
-Or with pytest in a fresh shell:
-
-```bash
-$env:PYTHONPATH = "src"
-python -m pytest -q
-```
-
-## Next Steps
-
-- add a Linux provider on top of the same SSH transport adapter
-- add richer Windows operations such as upload, download, and service control
-- support alternate config locations and secret backends
-- add Android transport and provider implementations
-
-
-
+- Android `files/delete`
+- Android `input tap / input text`
+- Linux support
+- stronger safety and session controls

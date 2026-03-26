@@ -1,32 +1,32 @@
-# codex-bridge Project Design (v1)
+# codex-bridge Project Design (v1.1)
 
 [中文版本](./PROJECT_DESIGN.zh-CN.md)
 
 ## 1. Project Goal
 
-`codex-bridge` is not meant to analyze remote-machine problems by itself. Its purpose is to act as a bridge that extends the **operating reach of local Codex to a remote machine**.
+`codex-bridge` is not meant to analyze remote-machine problems by itself. Its purpose is to act as a bridge that extends the **operating reach of local Codex to remote devices**.
 
 Its core position is:
 
 - **Local Codex thinks, decides, and plans the next step**
-- **The bridge sends actions to the remote machine and returns execution results**
-- **The remote machine performs the actual work**
+- **The bridge sends actions to the right remote execution path and returns results**
+- **The remote machine or device performs the actual work**
 
-The first stage focuses on:
+The current v1.1 direction is:
 
-- local Codex operating a remote Windows machine through the bridge
-- remote Windows using PowerShell as the execution layer
-- later expansion toward Linux and Android
+- keep the first proven path: **Windows + SSH + PowerShell**
+- add a second parallel path: **Android + ADB + shell**
+- preserve a modular structure so future Linux or alternate transports can be added without rewriting the CLI or service layer
 
 ---
 
 ## 2. Core Design Idea
 
-This project is not trying to become file sync or remote desktop.
+This project is not trying to become file sync, remote desktop, or an all-in-one automation platform.
 
 It is trying to solve this problem:
 
-> How can local Codex operate a remote machine as if its hands could reach beyond the local computer?
+> How can local Codex operate a remote system as if its hands could reach beyond the local computer?
 
 So the core design is:
 
@@ -38,11 +38,11 @@ The bridge should not try to understand tasks first. Its first job is to:
 
 - send commands
 - return results
-- keep the calling model consistent
+- keep the calling model consistent across platforms
 
 ---
 
-## 3. The Three Core Modules
+## 3. The Core Modules
 
 ### Module 1: Local Codex
 
@@ -53,7 +53,7 @@ Responsibilities:
 - organize multi-step work
 - continue based on remote results
 
-Local Codex is the brain. It does not operate the remote system directly; it acts through the bridge.
+Local Codex is the brain. It does not operate remote systems directly; it acts through the bridge.
 
 ---
 
@@ -61,57 +61,77 @@ Local Codex is the brain. It does not operate the remote system directly; it act
 
 Responsibilities:
 
-- manage remote host definitions
-- establish the connection path from local to remote
+- manage remote host and device definitions
+- choose the correct provider/adapter combination
 - send local actions into the remote execution layer
 - receive remote execution results
 - return results in a consistent form
 
 The bridge is not the executor and not the analyst. Its essence is:
 
-> enabling local Codex to operate a remote machine in a stable and repeatable way
+> enabling local Codex to operate remote systems in a stable and repeatable way
 
 ---
 
 ### Module 3: The Remote Execution Side
 
-In the first stage, the remote execution side is simply:
+The remote execution side is platform-specific.
 
-- **remote Windows PowerShell**
+Current supported paths:
+
+- **Windows + PowerShell over SSH**
+- **Android shell over ADB**
 
 Responsibilities:
 
 - receive commands through the bridge
-- execute them on the remote machine
-- access remote files, directories, processes, services, and related resources
+- execute them on the remote system
+- access remote files, directories, processes, logs, and related resources
 - return output, errors, and status
 
-In v1, no extra always-running remote agent is deployed.
+In v1.1, no extra always-running remote agent is deployed.
 
 Reasons:
 
-- PowerShell already covers the minimum execution needs
+- PowerShell and Android shell already cover the minimum execution needs
 - it keeps remote-side setup simpler
-- it is the fastest way to validate the full architecture
+- it validates the provider/adapter architecture faster
 
-If the system grows more advanced later, Module 3 can be upgraded into a dedicated remote execution agent.
+If the system grows more advanced later, Module 3 can be upgraded into dedicated remote execution agents.
 
 ---
 
-## 4. First-Stage Required Capabilities
+## 4. Design Rule: Platform and Transport Stay Separate
 
-The first stage must focus on basic remote execution actions.
+The project should not hardcode one path like `Windows == SSH == PowerShell` into every layer.
 
-### Priority 1
+Instead:
 
-- execute remote PowerShell commands
+- **provider** models platform behavior
+- **adapter** models connection behavior
+- **factory** assembles the right combination from host metadata
+
+That means:
+
+- Windows behavior belongs in `providers/windows.py`
+- Android behavior belongs in `providers/android.py`
+- SSH behavior belongs in `adapters/ssh.py`
+- ADB behavior belongs in `adapters/adb.py`
+
+This separation is what keeps the system extensible.
+
+---
+
+## 5. Required Capabilities
+
+### Priority 1: stable remote execution
+
+- execute remote commands
 - return standard output
 - return error output
 - return execution status
 
-### Priority 2
-
-After Priority 1 is stable:
+### Priority 2: structured remote inspection
 
 - read remote files
 - list remote directories
@@ -119,9 +139,7 @@ After Priority 1 is stable:
 - search text remotely
 - gather system information
 
-### Priority 3
-
-After the above is stable:
+### Priority 3: Codex-oriented flow support
 
 - multi-step context
 - remote working-directory awareness
@@ -131,23 +149,23 @@ After the above is stable:
 
 ---
 
-## 5. What v1 Does Not Try to Do
+## 6. What v1.1 Does Not Try to Do
 
-To avoid becoming too heavy too early, v1 explicitly does not try to do the following:
+To avoid becoming too heavy too early, v1.1 explicitly does not try to do the following:
 
 - remote desktop
 - GUI automation
 - deploying an extra remote-side agent
 - embedding heavy analysis logic inside the bridge
-- becoming an all-in-one platform too early
+- turning the bridge into a large general platform too early
 
-The first stage does one thing:
+The current stage does one thing:
 
-> make local Codex reliably send actions to remote Windows
+> make local Codex reliably send actions to remote Windows and Android systems through modular execution paths
 
 ---
 
-## 6. Current Code Responsibilities
+## 7. Current Code Responsibilities
 
 ### Startup and command entry
 
@@ -163,29 +181,31 @@ The first stage does one thing:
 
 ### Assembly logic
 
-- `factory.py`: decides which execution combination to build for a host
+- `factory.py`: decides which provider/adapter combination to build for a host
 
 ### Connection layer
 
-- `adapters/base.py`: shared connection contract
-- `adapters/ssh.py`: builds the remote SSH path to Windows
+- `adapters/base.py`: shared transport contract
+- `adapters/ssh.py`: SSH transport for Windows
+- `adapters/adb.py`: ADB transport for Android
 
 ### Platform layer
 
 - `providers/base.py`: shared platform contract
-- `providers/windows.py`: turns Windows operations into concrete executable actions
+- `providers/windows.py`: Windows operations over PowerShell
+- `providers/android.py`: Android operations over shell + adb
 
 ---
 
-## 7. A Typical Data Flow
+## 8. Typical Data Flow
 
-For a task like inspecting a remote `OpenClaw.json`, the ideal data flow is:
+For a task like inspecting a remote log file, the ideal data flow is:
 
 1. the user gives local Codex a task
 2. local Codex decides to inspect a remote path or read a file
 3. Codex sends the action through the bridge
-4. the bridge sends the action over the connection layer to remote Windows
-5. remote PowerShell performs the action
+4. the bridge resolves the right provider/adapter path
+5. the remote execution side performs the action
 6. the result comes back to the bridge
 7. the bridge returns the result to local Codex
 8. Codex decides the next action
@@ -194,42 +214,39 @@ The key point is:
 
 - reasoning stays local
 - execution happens remotely
-- the bridge handles the connection and handoff
+- platform/transport switching happens inside the bridge
 
 ---
 
-## 8. Why PowerShell Is the First Execution Layer
+## 9. Current Validation Status
 
-Remote PowerShell is the best v1 execution layer because:
+The code now supports two paths in structure:
 
-- it is native to Windows
-- it already covers the first-stage actions
-- it can work with files, directories, processes, services, and system state
-- it avoids deploying a new always-running program on the remote machine
-- it is the fastest route to validating the “Codex breaks out of the local machine” concept
+- Windows + SSH + PowerShell
+- Android + ADB + shell
 
-So in v1:
+But code support is not the same as real-world proof.
 
-> Module 3 can be treated as the remote PowerShell execution layer.
+The stage is still incomplete until:
 
-Strictly speaking, it is not a newly built separate service yet. It is the remote system’s built-in execution capability used as the third module.
+- at least one real Windows host has been validated end to end
+- at least one real Android device has been validated end to end
+- workflow-based follow-up actions are proven on real targets
 
 ---
 
-## 9. Future Expansion Directions
-
-After v1 is proven, the project can grow in several directions.
+## 10. Future Expansion Directions
 
 ### Platform expansion
 
 - Linux support
-- Android support
+- richer Android variants
 
 ### Capability expansion
 
 - upload files
 - download files
-- modify files
+- modify files more safely
 - control services
 - collect logs
 
@@ -242,30 +259,30 @@ After v1 is proven, the project can grow in several directions.
 
 ### Remote-side expansion
 
-Once PowerShell is no longer enough, consider:
+Once PowerShell or adb shell is no longer enough, consider:
 
-- a dedicated remote execution agent
+- dedicated remote execution agents
 - lower repeated connection/startup cost
 - more stable long-running remote operation
 
 ---
 
-## 10. First-Stage Definition of Done
+## 11. Definition of Done for This Stage
 
-The first stage is only complete when all of the following are true:
+The current stage is only complete when all of the following are true:
 
-- local setup can define remote Windows hosts reliably
-- the bridge can send commands from local to remote Windows
-- remote Windows can execute commands and return results
+- local setup can define Windows/SSH and Android/ADB targets reliably
+- the bridge can choose the correct execution path automatically
+- remote targets can execute commands and return structured results
 - local Codex can continue based on those results
-- at least one full real-world remote validation has been completed
+- real-world validation has been completed on both supported paths
 
 If the code exists but the end-to-end path has not been proven, the stage is not done.
 
 ---
 
-## 11. One-Sentence Summary
+## 12. One-Sentence Summary
 
-The real goal of `codex-bridge` v1 is:
+The real goal of `codex-bridge` v1.1 is:
 
-> **extend the operating reach of local Codex to remote Windows through a bridge, using remote PowerShell as the first execution layer.**
+> **extend the operating reach of local Codex to remote Windows and Android systems through a modular bridge, without coupling platform logic to one transport path.**

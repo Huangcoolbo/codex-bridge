@@ -152,7 +152,10 @@ class WindowsSSHProviderTests(unittest.TestCase):
         decoded = base64.b64decode(encoded).decode("utf-16le")
         self.assertIn("[Console]::OutputEncoding", decoded)
         self.assertIn("$ErrorActionPreference = 'Stop'", decoded)
+        self.assertIn("& {", decoded)
         self.assertIn("Get-Date", decoded)
+        self.assertIn("$nativeExitCode = $LASTEXITCODE", decoded)
+        self.assertIn("exit $nativeExitCode", decoded)
         self.assertEqual(result.operation, "exec")
         self.assertEqual(result.target["command"], "Get-Date")
         self.assertIsNone(result.target["cwd"])
@@ -418,3 +421,4 @@ class WindowsSSHProviderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

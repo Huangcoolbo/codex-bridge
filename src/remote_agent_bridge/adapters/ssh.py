@@ -47,6 +47,13 @@ class SSHTransportAdapter(TransportAdapter):
             self._client = self._connect()
         return self._client
 
+    def _load_known_hosts(self, client: "paramiko.SSHClient") -> None:
+        client.load_system_host_keys()
+
+        bridge_known_hosts = Path.cwd() / "data" / "known_hosts"
+        if bridge_known_hosts.exists():
+            client.load_host_keys(str(bridge_known_hosts))
+
     def _connect(self) -> "paramiko.SSHClient":
         if paramiko is None:
             raise BridgeError(
@@ -54,7 +61,7 @@ class SSHTransportAdapter(TransportAdapter):
             )
 
         client = paramiko.SSHClient()
-        client.load_system_host_keys()
+        self._load_known_hosts(client)
         client.set_missing_host_key_policy(paramiko.RejectPolicy())
 
         auth = self.profile.auth
@@ -77,10 +84,14 @@ class SSHTransportAdapter(TransportAdapter):
             connect_kwargs["look_for_keys"] = False
             connect_kwargs["allow_agent"] = False
         else:
-            connect_kwargs["look_for_keys"] = True
-            connect_kwargs["allow_agent"] = True
             if auth.key_path:
                 connect_kwargs["key_filename"] = str(Path(auth.key_path).expanduser())
+                connect_kwargs["look_for_keys"] = False
+                connect_kwargs["allow_agent"] = False
+            else:
+                connect_kwargs["look_for_keys"] = True
+                connect_kwargs["allow_agent"] = True
 
         client.connect(**connect_kwargs)
         return client
+

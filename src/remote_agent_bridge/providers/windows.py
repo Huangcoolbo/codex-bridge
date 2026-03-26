@@ -59,7 +59,13 @@ class WindowsSSHProvider(RemoteProvider):
         script = f"""
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         $ErrorActionPreference = 'Stop'{cwd_block}
+        & {{
         {command}
+        }}
+        $nativeExitCode = $LASTEXITCODE
+        if ($null -ne $nativeExitCode -and $nativeExitCode -ne 0) {{
+          exit $nativeExitCode
+        }}
         """
         result = self._run_powershell(script, timeout=timeout_seconds)
         return RemoteOperationResult.from_command(
