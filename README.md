@@ -4,6 +4,8 @@
 [![Desktop](https://img.shields.io/badge/client-Electron%20%2B%20React-111827)](./desktop-client)
 [![Gateway](https://img.shields.io/badge/gateway-Local%20HTTP%20API-0F766E)](./AGENT_GATEWAY.md)
 [![Docs](https://img.shields.io/badge/docs-Getting%20Started-2563EB)](./docs/GETTING_STARTED.zh-CN.md)
+[![GitHub stars](https://img.shields.io/github/stars/Huangcoolbo/codex-bridge?style=flat)](https://github.com/Huangcoolbo/codex-bridge/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/Huangcoolbo/codex-bridge?style=flat)](https://github.com/Huangcoolbo/codex-bridge/network/members)
 
 [English README](./README.en.md)
 
