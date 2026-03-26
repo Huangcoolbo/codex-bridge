@@ -5,7 +5,7 @@
 [![Gateway](https://img.shields.io/badge/gateway-Local%20HTTP%20API-0F766E)](./AGENT_GATEWAY.md)
 [![Docs](https://img.shields.io/badge/docs-Getting%20Started-2563EB)](./docs/GETTING_STARTED.zh-CN.md)
 
-[English README](./README.en.md) | [中文别名](./README.zh-CN.md)
+[English README](./README.en.md)
 
 > 让 Codex 不只是“告诉你怎么做”，而是真的去连接、探测、读取、执行、写入远程 Windows 和 Android。
 
