@@ -1,4 +1,4 @@
-# codex-bridge
+# <img src="./docs/assets/mengo.png" alt="Codex.Bridge icon" width="28" /> codex-bridge
 
 [![Platform](https://img.shields.io/badge/platform-Windows%20%2B%20Android-16A34A)](./AGENT_GATEWAY.md)
 [![Desktop](https://img.shields.io/badge/client-Electron%20%2B%20React-111827)](./desktop-client)
