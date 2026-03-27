@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { join } from "node:path"
 import { execFile } from "node:child_process"
 import { lookup as dnsLookup } from "node:dns/promises"
 import { networkInterfaces } from "node:os"
@@ -16,13 +16,9 @@ import type {
   WindowsProfileInput
 } from "@shared/contracts"
 import { agentGatewayPort, agentGatewayUrl } from "./agentGatewayConfig"
+import { ensureRuntimeWorkspace, getRuntimePaths } from "./runtimePaths"
 
-const desktopClientRoot = process.cwd()
-const projectRoot = resolve(desktopClientRoot, "..")
-const registryPath = join(projectRoot, "data", "hosts.json")
-const venvPython = join(projectRoot, ".venv", "Scripts", "python.exe")
 const sshConfigPath = join(process.env.USERPROFILE ?? "", ".ssh", "config")
-const projectDefaultWindowsKeyPath = join(projectRoot, "data", "ssh", "localhost_ed25519")
 const pythonBridgeSnippet = [
   "import json, sys",
   "from pathlib import Path",
@@ -87,22 +83,23 @@ type SshHostBlock = {
 }
 
 function ensureRegistry(): void {
-  mkdirSync(join(projectRoot, "data"), { recursive: true })
-  if (!existsSync(registryPath)) {
-    writeFileSync(registryPath, JSON.stringify({ hosts: [] }, null, 2) + "\n", "utf8")
+  const paths = ensureRuntimeWorkspace()
+  mkdirSync(paths.dataRoot, { recursive: true })
+  if (!existsSync(paths.registryPath)) {
+    writeFileSync(paths.registryPath, JSON.stringify({ hosts: [] }, null, 2) + "\n", "utf8")
   }
 }
 
 function loadProfilesRaw(): StoredProfile[] {
   ensureRegistry()
-  const payload = JSON.parse(readFileSync(registryPath, "utf8")) as { hosts?: StoredProfile[] }
+  const payload = JSON.parse(readFileSync(getRuntimePaths().registryPath, "utf8")) as { hosts?: StoredProfile[] }
   return [...(payload.hosts ?? [])].sort((left, right) => left.name.localeCompare(right.name))
 }
 
 function saveProfilesRaw(profiles: StoredProfile[]): void {
   ensureRegistry()
   const ordered = [...profiles].sort((left, right) => left.name.localeCompare(right.name))
-  writeFileSync(registryPath, JSON.stringify({ hosts: ordered }, null, 2) + "\n", "utf8")
+  writeFileSync(getRuntimePaths().registryPath, JSON.stringify({ hosts: ordered }, null, 2) + "\n", "utf8")
 }
 
 function normalizeGatewayString(value: string | undefined | null): string | undefined {
@@ -159,23 +156,26 @@ function isLoopbackHost(hostname: string | undefined | null): boolean {
 }
 
 function withProjectManagedKeyDefaults(candidate: WindowsDiscoveryCandidate): WindowsDiscoveryCandidate {
+  const { defaultWindowsKeyPath } = getRuntimePaths()
   if (candidate.source === "registry" || !isLoopbackHost(candidate.hostname)) {
     return candidate
   }
   return {
     ...candidate,
     authMethod: "key",
-    keyPath: projectDefaultWindowsKeyPath
+    keyPath: defaultWindowsKeyPath
   }
 }
 
 function resolvePython(): string {
+  const { venvPython } = getRuntimePaths()
   return existsSync(venvPython) ? venvPython : "python"
 }
 
 function runProcess(command: string, args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   return new Promise((resolvePromise, reject) => {
-    execFile(command, args, { cwd: projectRoot, windowsHide: true }, (error, stdout, stderr) => {
+    const { runtimeRoot } = ensureRuntimeWorkspace()
+    execFile(command, args, { cwd: runtimeRoot, windowsHide: true }, (error, stdout, stderr) => {
       if (error && typeof error.code !== "number") {
         reject(error)
         return
@@ -202,6 +202,7 @@ function parseJsonOrEnvelope(stdout: string, exitCode: number, stderr: string): 
 }
 
 async function runPythonBridge(method: "probe" | "execute", payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { registryPath } = getRuntimePaths()
   const result = await runProcess(resolvePython(), ["-c", pythonBridgeSnippet, registryPath, method, JSON.stringify(payload)])
   return parseJsonOrEnvelope(result.stdout, result.exitCode, result.stderr)
 }
@@ -462,6 +463,7 @@ function mergeCandidates(candidates: WindowsDiscoveryCandidate[]): WindowsDiscov
 
 export function loadDashboard(): DashboardSnapshot {
   const profiles = loadProfilesRaw()
+  const paths = getRuntimePaths()
   const counts: Record<ProfilePlatform, number> = { windows: 0, android: 0, linux: 0 }
   for (const profile of profiles) {
     counts[profile.platform] += 1
@@ -475,10 +477,10 @@ export function loadDashboard(): DashboardSnapshot {
       chrome: process.versions.chrome,
       platform: process.platform,
       adbAvailable: false,
-      pythonAvailable: existsSync(venvPython),
-      defaultWindowsKeyPath: projectDefaultWindowsKeyPath,
-      registryPath,
-      projectRoot,
+      pythonAvailable: existsSync(paths.venvPython),
+      defaultWindowsKeyPath: paths.defaultWindowsKeyPath,
+      registryPath: paths.registryPath,
+      projectRoot: paths.runtimeRoot,
       agentGatewayPort,
       agentGatewayUrl
     },
@@ -509,6 +511,7 @@ export function saveAndroidProfile(input: AndroidProfileInput): ProfileSummary {
 }
 
 export function saveWindowsProfile(input: WindowsProfileInput): ProfileSummary {
+  const { defaultWindowsKeyPath } = getRuntimePaths()
   const profiles = loadProfilesRaw().filter((profile) => profile.name !== input.name)
   const nextProfile: StoredProfile = {
     name: input.name.trim(),
@@ -520,7 +523,7 @@ export function saveWindowsProfile(input: WindowsProfileInput): ProfileSummary {
     description: input.description?.trim() || null,
     auth: {
       method: input.authMethod,
-      key_path: input.authMethod === "key" ? input.keyPath?.trim() || projectDefaultWindowsKeyPath : null,
+      key_path: input.authMethod === "key" ? input.keyPath?.trim() || defaultWindowsKeyPath : null,
       password: input.authMethod === "password" && input.storePassword ? input.password?.trim() || null : null
     }
   }

@@ -2,11 +2,14 @@
   "name": "codex-bridge-desktop-client",
   "private": true,
   "version": "0.1.0",
+  "description": "Desktop workbench and local agent gateway for Codex-driven Windows and Android remote access.",
+  "author": "Huangcoolbo",
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "dist:win": "npm run build && electron-builder --win portable",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
@@ -20,8 +23,51 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^35.0.0",
+    "electron-builder": "^26.0.12",
     "electron-vite": "^3.1.0",
     "typescript": "^5.8.3",
     "vite": "^6.3.5"
+  },
+  "build": {
+    "appId": "com.huangcoolbo.codexbridge",
+    "productName": "Codex.Bridge",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../pyproject.toml",
+        "to": "runtime/pyproject.toml"
+      },
+      {
+        "from": "../README.md",
+        "to": "runtime/README.md"
+      },
+      {
+        "from": "../src",
+        "to": "runtime/src"
+      },
+      {
+        "from": "../scripts",
+        "to": "runtime/scripts"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Codex.Bridge-v${version}.${ext}"
+    }
   }
 }

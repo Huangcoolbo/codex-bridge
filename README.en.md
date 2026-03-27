@@ -203,6 +203,8 @@ codex-bridge Desktop Client
   [docs/GETTING_STARTED.md](./docs/GETTING_STARTED.md)
 - Gateway API:
   [AGENT_GATEWAY.md](./AGENT_GATEWAY.md)
+- Changelog:
+  [CHANGELOG.md](./CHANGELOG.md)
 - Project design:
   [PROJECT_DESIGN.md](./PROJECT_DESIGN.md)
 - Development notes:

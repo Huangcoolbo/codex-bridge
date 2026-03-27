@@ -203,6 +203,8 @@ codex-bridge Desktop Client
   [docs/GETTING_STARTED.zh-CN.md](./docs/GETTING_STARTED.zh-CN.md)
 - Gateway 接口：
   [AGENT_GATEWAY.md](./AGENT_GATEWAY.md)
+- 变更日志：
+  [CHANGELOG.md](./CHANGELOG.md)
 - 项目设计：
   [PROJECT_DESIGN.zh-CN.md](./PROJECT_DESIGN.zh-CN.md)
 - 开发说明：

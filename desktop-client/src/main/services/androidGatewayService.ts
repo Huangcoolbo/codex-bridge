@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process"
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
-import { basename, join, posix, resolve } from "node:path"
+import { basename, join, posix } from "node:path"
 import { tmpdir } from "node:os"
 import { randomUUID } from "node:crypto"
 
@@ -11,11 +11,8 @@ import {
   validateAndroidPushRequest,
   validateAndroidTextWriteRequest
 } from "./androidGatewayPolicy"
+import { getRuntimePaths } from "./runtimePaths"
 import { clearCurrentAndroidDevice, getCurrentAndroidDevice, setCurrentAndroidDevice } from "./sessionService"
-
-const desktopClientRoot = process.cwd()
-const projectRoot = resolve(desktopClientRoot, "..")
-const defaultPullRoot = join(projectRoot, "data", "android-pulls")
 
 type AndroidGatewayEnvelope = {
   success: boolean
@@ -575,6 +572,7 @@ export async function pullAndroidFile(serial: string, path: string, localPath?: 
   }
 
   const adbPath = resolveAdbPath()
+  const defaultPullRoot = join(getRuntimePaths().dataRoot, "android-pulls")
   const outputDirectory = join(defaultPullRoot, normalizedSerial)
   mkdirSync(outputDirectory, { recursive: true })
   const destination = localPath?.trim() || join(outputDirectory, basename(normalizedPath))

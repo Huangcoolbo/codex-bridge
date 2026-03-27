@@ -11,4 +11,5 @@ data/staging/
 data/ssh/
 desktop-client/node_modules/
 desktop-client/out/
+desktop-client/release/
 skills/
