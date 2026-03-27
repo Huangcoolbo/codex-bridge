@@ -1,6 +1,6 @@
 import { app, dialog, shell, type BrowserWindow, type MessageBoxOptions } from "electron"
 import { createWriteStream } from "node:fs"
-import { mkdir, rename, unlink } from "node:fs/promises"
+import { mkdir, readdir, rename, unlink } from "node:fs/promises"
 import { get } from "node:https"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -42,6 +42,7 @@ let latestState: UpdateState = {
 
 let lastPromptedVersion: string | null = null
 let activeCheck: Promise<UpdateState> | null = null
+const managedUpdatesDir = join(app.getPath("userData"), "updates")
 
 function showMessage(window: BrowserWindow | null | undefined, options: MessageBoxOptions) {
   return window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options)
@@ -98,6 +99,26 @@ function requestText(url: string): Promise<string> {
   })
 }
 
+async function resolveUpdateDownloadDir(): Promise<string> {
+  await mkdir(managedUpdatesDir, { recursive: true })
+  return managedUpdatesDir
+}
+
+function isManagedInstallerFile(name: string): boolean {
+  return /^Codex\.Bridge(?:-Setup)?-v[\d.]+\.exe(?:\.blockmap)?$/i.test(name) || /\.download$/i.test(name)
+}
+
+export async function cleanupStaleUpdateInstallers(): Promise<void> {
+  const downloadDir = await resolveUpdateDownloadDir()
+  const entries = await readdir(downloadDir, { withFileTypes: true }).catch(() => [])
+
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isFile() && isManagedInstallerFile(entry.name))
+      .map((entry) => unlink(join(downloadDir, entry.name)).catch(() => undefined))
+  )
+}
+
 function selectPreferredAsset(assets: Array<{ name?: string; browser_download_url?: string }>): UpdateAsset | null {
   const normalized = assets
     .filter((asset) => asset.name && asset.browser_download_url)
@@ -139,8 +160,7 @@ async function fetchLatestRelease(): Promise<UpdateState> {
 }
 
 async function downloadAsset(asset: UpdateAsset): Promise<string> {
-  const downloadDir = app.getPath("downloads")
-  await mkdir(downloadDir, { recursive: true })
+  const downloadDir = await resolveUpdateDownloadDir()
 
   const targetPath = join(downloadDir, asset.name)
   const tempPath = join(tmpdir(), `${asset.name}.download`)
@@ -304,19 +324,20 @@ export async function downloadLatestUpdate(options: { window?: BrowserWindow | n
       message: filePath
     }
 
-    const result = await showMessage(options.window ?? null, {
+    const openError = await shell.openPath(filePath)
+    if (openError) {
+      throw new Error(openError)
+    }
+
+    await showMessage(options.window ?? null, {
       type: "info",
-      buttons: ["打开安装包", "稍后"],
-      defaultId: 0,
-      cancelId: 1,
-      title: "更新已下载",
-      message: "最新安装包已下载完成",
-      detail: filePath
+      buttons: ["确定"],
+      title: "开始更新",
+      message: "安装包已启动",
+      detail: `客户端即将退出，安装完成后再次打开即可。\n${filePath}`
     })
 
-    if (result.response === 0) {
-      await shell.openPath(filePath)
-    }
+    app.quit()
 
     return filePath
   } catch (error) {

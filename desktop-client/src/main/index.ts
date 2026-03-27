@@ -5,7 +5,7 @@ import { registerIpcHandlers } from "./ipc"
 import { startAgentGateway, stopAgentGateway } from "./services/agentGatewayService"
 import { runStartupBootstrap } from "./services/startupService"
 import { createTray, destroyTray } from "./services/trayService"
-import { checkForUpdates } from "./services/updateService"
+import { checkForUpdates, cleanupStaleUpdateInstallers } from "./services/updateService"
 
 let mainWindow: BrowserWindow | null = null
 let backgroundServicesStarted = false
@@ -56,6 +56,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  void cleanupStaleUpdateInstallers()
   createWindow()
 
   app.on("activate", () => {
