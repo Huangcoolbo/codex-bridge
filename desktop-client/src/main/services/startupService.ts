@@ -41,6 +41,8 @@ export function runStartupBootstrap(): void {
 
   const child = spawn(shell, [
     "-NoProfile",
+    "-WindowStyle",
+    "Hidden",
     "-ExecutionPolicy",
     "Bypass",
     "-File",

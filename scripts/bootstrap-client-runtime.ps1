@@ -204,13 +204,14 @@ function Ensure-ManagedLocalhostSshKey {
         $shell = Resolve-PowerShellExecutable
         $arguments = @(
             "-NoProfile",
+            "-WindowStyle", "Hidden",
             "-ExecutionPolicy", "Bypass",
             "-File", $authorizationScript,
             "-PublicKeyPath", $publicKeyPath,
             "-AuthorizedKeysPath", $authorizedKeys.Path,
             "-AdministratorsFile"
         )
-        $process = Start-Process -FilePath $shell -ArgumentList $arguments -Verb RunAs -Wait -PassThru
+        $process = Start-Process -FilePath $shell -ArgumentList $arguments -WindowStyle Hidden -Verb RunAs -Wait -PassThru
         if ($process.ExitCode -ne 0) {
             throw "Elevated localhost SSH authorization failed with code $($process.ExitCode)."
         }

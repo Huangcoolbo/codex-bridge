@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type JSX } from "react"
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type JSX } from "react"
 
 import type {
   AndroidDiscoverySnapshot,
@@ -241,6 +241,8 @@ export default function App(): JSX.Element {
   const [latestTask, setLatestTask] = useState<LatestTaskState>({ label: copy.inspector.taskReady, status: "idle" })
   const [validatedWindowsSignature, setValidatedWindowsSignature] = useState("")
   const profileMenuRef = useRef<HTMLDivElement | null>(null)
+  const workspaceRef = useRef<HTMLElement | null>(null)
+  const [workspaceScrollTop, setWorkspaceScrollTop] = useState(0)
 
   useEffect(() => {
     window.localStorage.setItem("bridge-workbench-locale", locale)
@@ -276,6 +278,8 @@ export default function App(): JSX.Element {
   const canPairAndroid = pairEndpoint.trim().length > 0 && pairCode.trim().length > 0
   const canConnectAndroid = connectEndpoint.trim().length > 0
   const defaultWindowsKeyPath = dashboard?.environment.defaultWindowsKeyPath ?? ""
+  const topbarProgress = Math.min(workspaceScrollTop / 92, 1)
+  const isTopbarSplit = topbarProgress > 0.08
   const windowsDraftSignature = JSON.stringify({
     hostname: windowsHost.trim(),
     port: windowsPort.trim() || "22",
@@ -289,15 +293,24 @@ export default function App(): JSX.Element {
     (windowsHost.trim() && windowsUser.trim() && (windowsAuthMethod === "password" ? windowsPassword.trim() : (windowsKeyPath.trim() || defaultWindowsKeyPath)))
   )
   const canSaveWindows = Boolean(selectedProfile || validatedWindowsSignature === windowsDraftSignature)
-  const statusLabel = latestTask.status === "running"
-    ? copy.toolbar.running
-    : latestTask.status === "success"
-      ? copy.inspector.success
-      : latestTask.status === "error"
-        ? copy.inspector.failed
-        : copy.toolbar.ready
   const latestTaskDisplayLabel = formatTaskLabel(latestTask.label, latestTask.status, locale)
-  const statusValueLabel = latestTask.status === "idle" ? copy.idle : latestTaskDisplayLabel
+  const topbarStatusText = latestTask.status === "idle" ? copy.toolbar.ready : latestTaskDisplayLabel
+  const topbarStatusClass = latestTask.status === "error"
+    ? "topbar-status is-failed"
+    : latestTask.status === "success"
+      ? "topbar-status is-success"
+      : "topbar-status"
+  const compactStatusClass = latestTask.status === "error"
+    ? "topbar-status-compact is-failed"
+    : latestTask.status === "success"
+      ? "topbar-status-compact is-success"
+      : "topbar-status-compact"
+  const topbarSurprise = locale === "zh"
+    ? "往下滑一点，桥会悄悄给你让出舞台。"
+    : "Scroll a little further. The bridge makes room for the next move."
+  const topbarStyle = {
+    ["--topbar-progress" as string]: topbarProgress.toString()
+  } as CSSProperties
   const windowsDraftTarget = windowsHost.trim()
     ? `${windowsUser.trim() ? `${windowsUser.trim()}@` : ""}${windowsHost.trim()}:${windowsPort.trim() || "22"}`
     : copy.inspector.noneDescription
@@ -452,6 +465,21 @@ export default function App(): JSX.Element {
       void window.bridgeDesktop.clearCurrentTarget()
     }
   }, [activeProfilePlatform, selectedProfile])
+
+  useEffect(() => {
+    const workspace = workspaceRef.current
+    if (!workspace) {
+      return
+    }
+
+    const handleScroll = (): void => {
+      setWorkspaceScrollTop(workspace.scrollTop)
+    }
+
+    handleScroll()
+    workspace.addEventListener("scroll", handleScroll, { passive: true })
+    return () => workspace.removeEventListener("scroll", handleScroll)
+  }, [])
 
   useEffect(() => {
     const handleAutomationDraft = (event: Event): void => {
@@ -677,26 +705,29 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <div className="topbar-brand">
-          <div className="brand-logo">CB</div>
-          <div className="topbar-brand-copy">
-            <strong>{copy.brandTitle}</strong>
+      <header className={isTopbarSplit ? "topbar is-split" : "topbar"} style={topbarStyle}>
+        <div className="topbar-brand-shell">
+          <div className="topbar-brand">
+            <div className="brand-logo">CB</div>
+            <div className={compactStatusClass}>
+              <span className="status-badge" />
+              <span className="topbar-status-text">{topbarStatusText}</span>
+            </div>
           </div>
         </div>
 
-        <div
-          className={
-            latestTask.status === "error"
-              ? "topbar-status is-failed"
-              : latestTask.status === "success"
-                ? "topbar-status is-success"
-                : "topbar-status"
-          }
-        >
-          <span className="status-badge" />
-          <span>{statusLabel}</span>
-          <strong>{statusValueLabel}</strong>
+        <div className="topbar-middle">
+          <div className={topbarStatusClass}>
+            <span className="status-badge" />
+            <span className="topbar-brand-title">{copy.brandTitle}</span>
+            <span className="topbar-status-divider" aria-hidden="true" />
+            <span className="topbar-status-meta">
+              <span className="topbar-status-text">{topbarStatusText}</span>
+            </span>
+          </div>
+          <div className="topbar-surprise" aria-hidden={!isTopbarSplit}>
+            <span>{topbarSurprise}</span>
+          </div>
         </div>
 
         <div className="topbar-actions">
@@ -718,7 +749,7 @@ export default function App(): JSX.Element {
           </nav>
         </aside>
 
-        <main className="workspace">
+        <main className="workspace" ref={workspaceRef}>
           <header className="workspace-header">
             <div className="header-copy">
               <h2>{copy.sections.find((section) => section.id === activeSection)?.label}</h2>
