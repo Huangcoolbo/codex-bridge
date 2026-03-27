@@ -23,6 +23,8 @@ const pythonBridgeSnippet = [
   "import json, sys",
   "from pathlib import Path",
   "sys.path.insert(0, str(Path.cwd() / 'src'))",
+  "from remote_agent_bridge.factory import ProviderFactory",
+  "from remote_agent_bridge.models import HostProfile",
   "from remote_agent_bridge.service import BridgeService",
   "from remote_agent_bridge.storage import HostRegistry",
   "registry_path = Path(sys.argv[1])",
@@ -31,6 +33,13 @@ const pythonBridgeSnippet = [
   "service = BridgeService(HostRegistry(registry_path))",
   "if method == 'probe':",
   "    result = service.probe(payload['name'], password_override=payload.get('password_override'))",
+  "elif method == 'probeDraft':",
+  "    profile = HostProfile.from_dict(payload['profile'])",
+  "    provider = ProviderFactory().create(profile, password_override=payload.get('password_override'))",
+  "    try:",
+  "        result = provider.probe().with_host(profile.name)",
+  "    finally:",
+  "        provider.close()",
   "elif method == 'execute':",
   "    result = service.execute(payload['name'], payload['command'], cwd=payload.get('cwd'), timeout_seconds=payload.get('timeout_seconds'), password_override=payload.get('password_override'))",
   "else:",
@@ -119,6 +128,24 @@ function toGatewaySummary(profile: StoredProfile): Record<string, unknown> {
   }
 }
 
+function buildWindowsStoredProfile(input: WindowsProfileInput): StoredProfile {
+  const { defaultWindowsKeyPath } = getRuntimePaths()
+  return {
+    name: input.name.trim(),
+    hostname: input.hostname.trim(),
+    username: input.username.trim(),
+    port: input.port,
+    platform: "windows",
+    transport: "ssh",
+    description: input.description?.trim() || null,
+    auth: {
+      method: input.authMethod,
+      key_path: input.authMethod === "key" ? input.keyPath?.trim() || defaultWindowsKeyPath : null,
+      password: input.authMethod === "password" ? input.password?.trim() || null : null
+    }
+  }
+}
+
 function toSummary(profile: StoredProfile): ProfileSummary {
   const target = profile.transport === "adb"
     ? profile.hostname
@@ -201,7 +228,7 @@ function parseJsonOrEnvelope(stdout: string, exitCode: number, stderr: string): 
   }
 }
 
-async function runPythonBridge(method: "probe" | "execute", payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function runPythonBridge(method: "probe" | "probeDraft" | "execute", payload: Record<string, unknown>): Promise<Record<string, unknown>> {
   const { registryPath } = getRuntimePaths()
   const result = await runProcess(resolvePython(), ["-c", pythonBridgeSnippet, registryPath, method, JSON.stringify(payload)])
   return parseJsonOrEnvelope(result.stdout, result.exitCode, result.stderr)
@@ -511,22 +538,11 @@ export function saveAndroidProfile(input: AndroidProfileInput): ProfileSummary {
 }
 
 export function saveWindowsProfile(input: WindowsProfileInput): ProfileSummary {
-  const { defaultWindowsKeyPath } = getRuntimePaths()
   const profiles = loadProfilesRaw().filter((profile) => profile.name !== input.name)
-  const nextProfile: StoredProfile = {
-    name: input.name.trim(),
-    hostname: input.hostname.trim(),
-    username: input.username.trim(),
-    port: input.port,
-    platform: "windows",
-    transport: "ssh",
-    description: input.description?.trim() || null,
-    auth: {
-      method: input.authMethod,
-      key_path: input.authMethod === "key" ? input.keyPath?.trim() || defaultWindowsKeyPath : null,
-      password: input.authMethod === "password" && input.storePassword ? input.password?.trim() || null : null
-    }
-  }
+  const nextProfile = buildWindowsStoredProfile({
+    ...input,
+    password: input.storePassword ? input.password : undefined
+  })
   profiles.push(nextProfile)
   saveProfilesRaw(profiles)
   return toSummary(nextProfile)
@@ -658,6 +674,14 @@ export function probeProfile(name: string, passwordOverride?: string): Promise<R
   return runPythonBridge("probe", {
     name,
     password_override: passwordOverride?.trim() || null
+  })
+}
+
+export function probeWindowsDraft(input: WindowsProfileInput): Promise<Record<string, unknown>> {
+  const profile = buildWindowsStoredProfile(input)
+  return runPythonBridge("probeDraft", {
+    profile,
+    password_override: input.authMethod === "password" ? input.password?.trim() || null : null
   })
 }
 

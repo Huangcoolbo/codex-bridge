@@ -1,5 +1,5 @@
 import { app } from "electron"
-import { cpSync, existsSync, mkdirSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 
 type RuntimePaths = {
@@ -68,13 +68,23 @@ export function ensureRuntimeWorkspace(): RuntimePaths {
   mkdirSync(paths.runtimeRoot, { recursive: true })
 
   const entries = ["pyproject.toml", "README.md", "src", "scripts"]
-  for (const entry of entries) {
-    const from = join(paths.bundleRoot, entry)
-    const to = join(paths.runtimeRoot, entry)
-    if (!existsSync(from)) {
-      continue
+  const versionMarkerPath = join(paths.runtimeRoot, ".runtime-version")
+  const installedVersion = existsSync(versionMarkerPath) ? readFileSync(versionMarkerPath, "utf8").trim() : ""
+  const currentVersion = app.getVersion()
+  const missingEntry = entries.some((entry) => !existsSync(join(paths.runtimeRoot, entry)))
+  const needsSync = installedVersion !== currentVersion || missingEntry
+
+  if (needsSync) {
+    for (const entry of entries) {
+      const from = join(paths.bundleRoot, entry)
+      const to = join(paths.runtimeRoot, entry)
+      if (!existsSync(from)) {
+        continue
+      }
+      cpSync(from, to, { recursive: true, force: true })
     }
-    cpSync(from, to, { recursive: true, force: true })
+
+    writeFileSync(versionMarkerPath, `${currentVersion}\n`, "utf8")
   }
 
   return paths

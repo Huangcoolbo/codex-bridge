@@ -246,7 +246,7 @@ export const COPY: Record<Locale, Copy> = {
       pairing: "Pairing",
       connecting: "Connecting",
       disconnecting: "Disconnecting",
-      saving: "Saving Android"
+      saving: "Saving"
     },
     windows: {
       workflowTitle: "Windows SSH",
@@ -287,7 +287,7 @@ export const COPY: Record<Locale, Copy> = {
       sourceScan: "Network",
       sourceResolved: "Resolved",
       scannedRange: "Scanned",
-      saving: "Saving Windows",
+      saving: "Saving",
       probing: "Probing",
       executing: "Running command"
     },
@@ -401,11 +401,11 @@ export const COPY: Record<Locale, Copy> = {
       description: "备注",
       descriptionPlaceholder: "可选",
       saveProfile: "保存",
-      refreshing: "发现 Android 设备",
+      refreshing: "发现设备中",
       pairing: "配对中",
       connecting: "连接中",
       disconnecting: "断开中",
-      saving: "保存 Android"
+      saving: "保存中"
     },
     windows: {
       workflowTitle: "Windows SSH",
@@ -446,9 +446,9 @@ export const COPY: Record<Locale, Copy> = {
       sourceScan: "局域网",
       sourceResolved: "解析",
       scannedRange: "扫描范围",
-      saving: "保存 Windows",
+      saving: "保存中",
       probing: "探测中",
-      executing: "执行命令"
+      executing: "执行中"
     },
     linux: {
       title: "Linux",

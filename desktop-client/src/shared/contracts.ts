@@ -165,6 +165,7 @@ export interface RendererApi {
   saveAndroidProfile: (input: AndroidProfileInput) => Promise<ProfileSummary>
   saveWindowsProfile: (input: WindowsProfileInput) => Promise<ProfileSummary>
   probeProfile: (name: string, passwordOverride?: string) => Promise<Record<string, unknown>>
+  probeWindowsDraft: (input: WindowsProfileInput) => Promise<Record<string, unknown>>
   executeProfile: (name: string, command: string, passwordOverride?: string) => Promise<Record<string, unknown>>
   setCommand: (command: string, target?: string, shell?: CommandShell, passwordOverride?: string) => Promise<CommandDraft>
   runCommand: (input?: CommandRunRequest) => Promise<CommandExecutionResult>

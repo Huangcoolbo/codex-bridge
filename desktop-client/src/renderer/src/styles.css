@@ -304,6 +304,12 @@ button:disabled {
   color: #b91c1c;
 }
 
+.topbar-status.is-success {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-active);
+}
+
 .topbar-status strong {
   color: var(--text-primary);
   font-weight: var(--fw-semibold);
@@ -320,6 +326,11 @@ button:disabled {
 .topbar-status.is-failed .status-badge {
   background: #dc2626;
   box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18);
+}
+
+.topbar-status.is-success .status-badge {
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .topbar-actions {

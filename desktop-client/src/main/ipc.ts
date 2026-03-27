@@ -22,6 +22,7 @@ import {
   executeProfile,
   loadDashboard,
   loadProfile,
+  probeWindowsDraft,
   probeProfile,
   saveAndroidProfile,
   saveWindowsProfile
@@ -77,6 +78,7 @@ export function registerIpcHandlers(window: BrowserWindow): void {
   ipcMain.handle("profile:saveAndroid", async (_event, input: AndroidProfileInput) => saveAndroidProfile(input))
   ipcMain.handle("profile:saveWindows", async (_event, input: WindowsProfileInput) => saveWindowsProfile(input))
   ipcMain.handle("profile:probe", async (_event, name: string, passwordOverride?: string) => probeProfile(name, passwordOverride))
+  ipcMain.handle("profile:probeWindowsDraft", async (_event, input: WindowsProfileInput) => probeWindowsDraft(input))
   ipcMain.handle("profile:execute", async (_event, name: string, command: string, passwordOverride?: string) => executeProfile(name, command, passwordOverride))
   ipcMain.handle("automation:setCommand", async (_event, command: string, target?: string, shell?: CommandExecutionRequest["shell"], passwordOverride?: string) =>
     setCommandDraft(command, target, shell, passwordOverride)

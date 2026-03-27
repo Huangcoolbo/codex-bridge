@@ -30,6 +30,7 @@ const api: RendererApi = {
   saveAndroidProfile: (input) => ipcRenderer.invoke("profile:saveAndroid", input),
   saveWindowsProfile: (input) => ipcRenderer.invoke("profile:saveWindows", input),
   probeProfile: (name: string, passwordOverride?: string) => ipcRenderer.invoke("profile:probe", name, passwordOverride),
+  probeWindowsDraft: (input) => ipcRenderer.invoke("profile:probeWindowsDraft", input),
   executeProfile: (name: string, command: string, passwordOverride?: string) => ipcRenderer.invoke("profile:execute", name, command, passwordOverride),
   setCommand: async (command: string, target?: string, shell?: CommandShell, passwordOverride?: string) => {
     const draft = await ipcRenderer.invoke("automation:setCommand", command, target, shell, passwordOverride) as CommandDraft

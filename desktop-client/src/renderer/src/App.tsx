@@ -70,20 +70,18 @@ function isFailedResult(result: unknown): boolean {
 }
 
 function formatTaskLabel(label: string, status: LatestTaskState["status"], locale: Locale): string {
-  if (status !== "error") {
+  if (status === "idle" || status === "running") {
     return label
   }
 
+  const suffix = status === "success" ? "成功" : "失败"
+
   if (locale === "zh") {
     const base = label.endsWith("中") ? label.slice(0, -1) : label
-    return `${base}失败`
+    return `${base}${suffix}`
   }
 
-  if (label.endsWith("ing")) {
-    return `${label.slice(0, -3)} failed`
-  }
-
-  return `${label} failed`
+  return `${label} ${status === "success" ? "succeeded" : "failed"}`
 }
 
 function parseAndroidQrPayload(rawText: string): AndroidQrPayload {
@@ -217,7 +215,6 @@ export default function App(): JSX.Element {
   const [androidDiscovery, setAndroidDiscovery] = useState<AndroidDiscoverySnapshot | null>(null)
   const [windowsDiscovery, setWindowsDiscovery] = useState<WindowsDiscoverySnapshot | null>(null)
   const [logLines, setLogLines] = useState<string[]>([])
-  const [busyLabel, setBusyLabel] = useState<string>(copy.idle)
 
   const [adbPath, setAdbPath] = useState("")
   const [pairEndpoint, setPairEndpoint] = useState("")
@@ -242,13 +239,13 @@ export default function App(): JSX.Element {
   const [selectedProfiles, setSelectedProfiles] = useState<SectionProfileState>({ windows: "", android: "", linux: "" })
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [latestTask, setLatestTask] = useState<LatestTaskState>({ label: copy.inspector.taskReady, status: "idle" })
+  const [validatedWindowsSignature, setValidatedWindowsSignature] = useState("")
   const profileMenuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     window.localStorage.setItem("bridge-workbench-locale", locale)
-    setBusyLabel((current) => (current === COPY.en.idle || current === COPY.zh.idle ? copy.idle : current))
     setLatestTask((current) => current.status === "idle" ? { label: copy.inspector.taskReady, status: "idle" } : current)
-  }, [locale, copy.idle, copy.inspector.taskReady])
+  }, [locale, copy.inspector.taskReady])
 
   useEffect(() => {
     window.localStorage.setItem("bridge-workbench-theme", theme)
@@ -278,20 +275,29 @@ export default function App(): JSX.Element {
   const hasActiveAndroidSession = androidDevices.some((device) => device.state === "device")
   const canPairAndroid = pairEndpoint.trim().length > 0 && pairCode.trim().length > 0
   const canConnectAndroid = connectEndpoint.trim().length > 0
-  const statusLabel = latestTask.status === "error"
-    ? copy.inspector.failed
-    : busyLabel === copy.idle
-      ? copy.toolbar.ready
-      : copy.toolbar.running
-  const latestTaskDisplayLabel = formatTaskLabel(latestTask.label, latestTask.status, locale)
-  const statusValueLabel = latestTask.status === "error" ? latestTaskDisplayLabel : busyLabel
-  const latestTaskStatusLabel = latestTask.status === "running"
-    ? copy.inspector.running
+  const defaultWindowsKeyPath = dashboard?.environment.defaultWindowsKeyPath ?? ""
+  const windowsDraftSignature = JSON.stringify({
+    hostname: windowsHost.trim(),
+    port: windowsPort.trim() || "22",
+    username: windowsUser.trim(),
+    authMethod: windowsAuthMethod,
+    keyPath: windowsAuthMethod === "key" ? (windowsKeyPath.trim() || defaultWindowsKeyPath) : "",
+    hasPassword: windowsAuthMethod === "password" ? Boolean(windowsPassword.trim()) : false
+  })
+  const canProbeWindows = Boolean(
+    (selectedProfile && selectedProfileSummary?.platform === "windows") ||
+    (windowsHost.trim() && windowsUser.trim() && (windowsAuthMethod === "password" ? windowsPassword.trim() : (windowsKeyPath.trim() || defaultWindowsKeyPath)))
+  )
+  const canSaveWindows = Boolean(selectedProfile || validatedWindowsSignature === windowsDraftSignature)
+  const statusLabel = latestTask.status === "running"
+    ? copy.toolbar.running
     : latestTask.status === "success"
       ? copy.inspector.success
       : latestTask.status === "error"
         ? copy.inspector.failed
-        : copy.inspector.taskReady
+        : copy.toolbar.ready
+  const latestTaskDisplayLabel = formatTaskLabel(latestTask.label, latestTask.status, locale)
+  const statusValueLabel = latestTask.status === "idle" ? copy.idle : latestTaskDisplayLabel
   const windowsDraftTarget = windowsHost.trim()
     ? `${windowsUser.trim() ? `${windowsUser.trim()}@` : ""}${windowsHost.trim()}:${windowsPort.trim() || "22"}`
     : copy.inspector.noneDescription
@@ -310,10 +316,14 @@ export default function App(): JSX.Element {
         { label: copy.overview.cards.registryFile, value: dashboard.environment.registryPath }
       ]
     : []
-  const defaultWindowsKeyPath = dashboard?.environment.defaultWindowsKeyPath ?? ""
 
   function setPlatformSelection(platform: ProfilePlatform, name: string): void {
     setSelectedProfiles((current) => ({ ...current, [platform]: name }))
+  }
+
+  function beginWindowsConnectionDraft(): void {
+    beginWindowsDraft()
+    setValidatedWindowsSignature("")
   }
 
   function applyProfileDetail(detail: ProfileDetail): void {
@@ -370,8 +380,7 @@ export default function App(): JSX.Element {
     setLogLines((current) => [`[${stamp}] ${title}\n${safeStringify(payload)}`, ...current].slice(0, 18))
   }
 
-  async function runTask<T>(label: string, action: () => Promise<T>, onSuccess?: (result: T) => void): Promise<void> {
-    setBusyLabel(label)
+  async function runTask<T>(label: string, action: () => Promise<T>, onSuccess?: (result: T) => Promise<void> | void): Promise<void> {
     setLatestTask({ label, status: "running" })
     try {
       const result = await action()
@@ -380,19 +389,24 @@ export default function App(): JSX.Element {
         setLatestTask({ label, status: "error" })
         return
       }
-      onSuccess?.(result)
+      await onSuccess?.(result)
       appendLog(label, result)
       setLatestTask({ label, status: "success" })
     } catch (error) {
       appendLog(`${label} failed`, error instanceof Error ? error.message : String(error))
       setLatestTask({ label, status: "error" })
-    } finally {
-      setBusyLabel(copy.idle)
     }
   }
 
   useEffect(() => {
-    void runTask(copy.loadingDashboard, refreshDashboard)
+    const timer = window.setTimeout(() => {
+      void refreshDashboard().catch((error) => {
+        appendLog(`${copy.loadingDashboard} failed`, error instanceof Error ? error.message : String(error))
+        setLatestTask({ label: copy.loadingDashboard, status: "error" })
+      })
+    }, 0)
+
+    return () => window.clearTimeout(timer)
   }, [])
 
   useEffect(() => {
@@ -448,7 +462,6 @@ export default function App(): JSX.Element {
     const handleAutomationStart = (event: Event): void => {
       const detail = (event as BridgeAutomationDraftEvent).detail
       syncAutomationCommand(detail.target, detail.command)
-      setBusyLabel(copy.windows.executing)
       setLatestTask({ label: copy.windows.executing, status: "running" })
     }
 
@@ -457,7 +470,6 @@ export default function App(): JSX.Element {
       syncAutomationCommand(detail.target, detail.command)
       appendLog(copy.windows.executing, detail)
       setLatestTask({ label: copy.windows.executing, status: detail.success ? "success" : "error" })
-      setBusyLabel(copy.idle)
     }
 
     window.addEventListener(automationDraftEvent, handleAutomationDraft)
@@ -552,7 +564,7 @@ export default function App(): JSX.Element {
   }
 
   function applyWindowsCandidate(candidate: WindowsDiscoveryCandidate): void {
-    setPlatformSelection("windows", "")
+    beginWindowsConnectionDraft()
     setSelectedWindowsCandidateId(candidate.id)
     setWindowsName(normalizeProfileName(candidate.label))
     setWindowsHost(candidate.hostname)
@@ -568,6 +580,9 @@ export default function App(): JSX.Element {
   }
 
   async function handleWindowsSave(): Promise<void> {
+    if (!canSaveWindows) {
+      return
+    }
     const payload: WindowsProfileInput = {
       name: windowsName,
       hostname: windowsHost,
@@ -586,8 +601,30 @@ export default function App(): JSX.Element {
   }
 
   async function handleProbe(): Promise<void> {
-    if (!selectedProfile) return
-    await runTask(copy.windows.probing, () => window.bridgeDesktop.probeProfile(selectedProfile, windowsAuthMethod === "password" ? windowsPassword : undefined))
+    if (!canProbeWindows) {
+      return
+    }
+
+    if (selectedProfile) {
+      await runTask(copy.windows.probing, () => window.bridgeDesktop.probeProfile(selectedProfile, windowsAuthMethod === "password" ? windowsPassword : undefined))
+      return
+    }
+
+    const payload: WindowsProfileInput = {
+      name: windowsName || normalizeProfileName(windowsHost),
+      hostname: windowsHost,
+      username: windowsUser,
+      port: Number(windowsPort || 22),
+      authMethod: windowsAuthMethod,
+      keyPath: windowsKeyPath,
+      password: windowsPassword,
+      storePassword: false,
+      description: windowsDescription
+    }
+
+    await runTask(copy.windows.probing, () => window.bridgeDesktop.probeWindowsDraft(payload), async () => {
+      setValidatedWindowsSignature(windowsDraftSignature)
+    })
   }
 
   async function handleExecuteWindows(): Promise<void> {
@@ -598,6 +635,7 @@ export default function App(): JSX.Element {
   async function handlePickFile(): Promise<void> {
     const result = await window.bridgeDesktop.pickFile()
     if (result) {
+      beginWindowsConnectionDraft()
       setWindowsKeyPath(result)
     }
   }
@@ -622,6 +660,7 @@ export default function App(): JSX.Element {
         linux: current.linux === name ? "" : current.linux
       }))
       setSelectedWindowsCandidateId("")
+      setValidatedWindowsSignature("")
       await refreshDashboard()
     })
   }
@@ -629,6 +668,9 @@ export default function App(): JSX.Element {
   function handleSelectProfile(name: string): void {
     if (activeProfilePlatform) {
       setPlatformSelection(activeProfilePlatform, name)
+    }
+    if (activeProfilePlatform === "windows") {
+      setValidatedWindowsSignature("")
     }
     setProfileMenuOpen(false)
   }
@@ -643,7 +685,15 @@ export default function App(): JSX.Element {
           </div>
         </div>
 
-        <div className={latestTask.status === "error" ? "topbar-status is-failed" : "topbar-status"}>
+        <div
+          className={
+            latestTask.status === "error"
+              ? "topbar-status is-failed"
+              : latestTask.status === "success"
+                ? "topbar-status is-success"
+                : "topbar-status"
+          }
+        >
           <span className="status-badge" />
           <span>{statusLabel}</span>
           <strong>{statusValueLabel}</strong>
@@ -666,7 +716,6 @@ export default function App(): JSX.Element {
               </button>
             ))}
           </nav>
-          <div className={latestTask.status === "error" ? "rail-status is-failed" : "rail-status"}><span>{copy.task}</span><strong>{statusValueLabel}</strong></div>
         </aside>
 
         <main className="workspace">
@@ -853,17 +902,17 @@ export default function App(): JSX.Element {
                 <section className="card-subsection">
                   <div className="field-grid field-grid-3">
                     <label><span>{copy.windows.name}</span><input value={windowsName} onChange={(event) => setWindowsName(event.target.value)} /></label>
-                    <label><span>{copy.windows.host}</span><input value={windowsHost} onChange={(event) => setWindowsHost(event.target.value)} /></label>
-                    <label><span>{copy.windows.port}</span><input value={windowsPort} onChange={(event) => setWindowsPort(event.target.value)} /></label>
-                    <label><span>{copy.windows.user}</span><input value={windowsUser} onChange={(event) => setWindowsUser(event.target.value)} /></label>
-                    <label><span>{copy.windows.auth}</span><select value={windowsAuthMethod} onChange={(event) => setWindowsAuthMethod(event.target.value as "key" | "password")}><option value="key">{copy.windows.authKey}</option><option value="password">{copy.windows.authPassword}</option></select></label>
+                    <label><span>{copy.windows.host}</span><input value={windowsHost} onChange={(event) => { beginWindowsConnectionDraft(); setWindowsHost(event.target.value) }} /></label>
+                    <label><span>{copy.windows.port}</span><input value={windowsPort} onChange={(event) => { beginWindowsConnectionDraft(); setWindowsPort(event.target.value) }} /></label>
+                    <label><span>{copy.windows.user}</span><input value={windowsUser} onChange={(event) => { beginWindowsConnectionDraft(); setWindowsUser(event.target.value) }} /></label>
+                    <label><span>{copy.windows.auth}</span><select value={windowsAuthMethod} onChange={(event) => { beginWindowsConnectionDraft(); setWindowsAuthMethod(event.target.value as "key" | "password") }}><option value="key">{copy.windows.authKey}</option><option value="password">{copy.windows.authPassword}</option></select></label>
                     <label><span>{copy.windows.description}</span><input value={windowsDescription} onChange={(event) => setWindowsDescription(event.target.value)} /></label>
                   </div>
                 </section>
 
                 <section className="card-subsection">
-                  {windowsAuthMethod === "key" ? <div className="field-grid field-grid-2 compact-top"><label><span>{copy.windows.keyPath}</span><input value={windowsKeyPath} onChange={(event) => setWindowsKeyPath(event.target.value)} placeholder={defaultWindowsKeyPath || copy.windows.keyPathPlaceholder} /></label><div className="inline-actions bottom-align"><button className="ghost-button" onClick={() => void handlePickFile()}>{copy.windows.browseKey}</button></div></div> : <div className="field-grid field-grid-2 compact-top"><label><span>{copy.windows.password}</span><input type="password" value={windowsPassword} onChange={(event) => setWindowsPassword(event.target.value)} /></label><label className="checkbox-row bottom-align checkbox-inline"><input type="checkbox" checked={windowsStorePassword} onChange={(event) => setWindowsStorePassword(event.target.checked)} /><span>{copy.windows.storePassword}</span></label></div>}
-                  <div className="button-row form-tail"><button className="primary-button" onClick={() => void handleWindowsSave()}>{copy.windows.saveProfile}</button><button className="ghost-button" onClick={() => void handleProbe()}>{copy.windows.probeSelected}</button></div>
+                  {windowsAuthMethod === "key" ? <div className="field-grid field-grid-2 compact-top"><label><span>{copy.windows.keyPath}</span><input value={windowsKeyPath} onChange={(event) => { beginWindowsConnectionDraft(); setWindowsKeyPath(event.target.value) }} placeholder={defaultWindowsKeyPath || copy.windows.keyPathPlaceholder} /></label><div className="inline-actions bottom-align"><button className="ghost-button" onClick={() => void handlePickFile()}>{copy.windows.browseKey}</button></div></div> : <div className="field-grid field-grid-2 compact-top"><label><span>{copy.windows.password}</span><input type="password" value={windowsPassword} onChange={(event) => { beginWindowsConnectionDraft(); setWindowsPassword(event.target.value) }} /></label><label className="checkbox-row bottom-align checkbox-inline"><input type="checkbox" checked={windowsStorePassword} onChange={(event) => setWindowsStorePassword(event.target.checked)} /><span>{copy.windows.storePassword}</span></label></div>}
+                  <div className="button-row form-tail"><button className="primary-button" disabled={!canProbeWindows} onClick={() => void handleProbe()}>{copy.windows.probeSelected}</button><button className="ghost-button" disabled={!canSaveWindows} onClick={() => void handleWindowsSave()}>{copy.windows.saveProfile}</button></div>
                 </section>
               </div>
 
@@ -871,7 +920,7 @@ export default function App(): JSX.Element {
                 <div className="card-head stacked-head"><div><h3>{copy.windows.commandTitle}</h3></div></div>
                 <section className="card-subsection command-shell">
                   <label className="stack-field"><span>{copy.windows.command}</span><textarea value={windowsCommand} onChange={(event) => setWindowsCommand(event.target.value)} rows={4} /></label>
-                  <div className="button-row"><button className="ghost-button" onClick={() => void handleExecuteWindows()}>{copy.windows.runCommand}</button></div>
+                  <div className="button-row"><button className="ghost-button" disabled={!selectedProfile} onClick={() => void handleExecuteWindows()}>{copy.windows.runCommand}</button></div>
                 </section>
               </div>
             </section>
@@ -896,13 +945,6 @@ export default function App(): JSX.Element {
                 <strong>{selectedProfileSummary?.platform ?? copy.inspector.profilePlaceholder}</strong>
               </div>
               <p className="copy-block">{currentTargetLabel}</p>
-            </div>
-            <div className="summary-block compact">
-              <div className="summary-row">
-                <span>{copy.inspector.latestTask}</span>
-                <strong className={`status-chip ${latestTask.status}`}>{latestTaskStatusLabel}</strong>
-              </div>
-              <p className="copy-block">{latestTaskDisplayLabel}</p>
             </div>
           </section>
           <section className="inspector-card grow">

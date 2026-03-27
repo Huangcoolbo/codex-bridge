@@ -4,8 +4,21 @@ import { join } from "node:path"
 import { registerIpcHandlers } from "./ipc"
 import { startAgentGateway, stopAgentGateway } from "./services/agentGatewayService"
 import { runStartupBootstrap } from "./services/startupService"
+import { createTray, destroyTray } from "./services/trayService"
+import { checkForUpdates } from "./services/updateService"
 
 let mainWindow: BrowserWindow | null = null
+let backgroundServicesStarted = false
+
+function startBackgroundServices(): void {
+  if (backgroundServicesStarted) {
+    return
+  }
+
+  backgroundServicesStarted = true
+  startAgentGateway()
+  runStartupBootstrap()
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -25,8 +38,7 @@ function createWindow(): void {
   })
 
   registerIpcHandlers(mainWindow)
-  startAgentGateway()
-  runStartupBootstrap()
+  createTray(mainWindow)
 
   if (process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -34,6 +46,13 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(join(__dirname, "../renderer/index.html"))
   }
+
+  mainWindow.webContents.once("did-finish-load", () => {
+    setTimeout(() => startBackgroundServices(), 0)
+    setTimeout(() => {
+      void checkForUpdates({ window: mainWindow })
+    }, 2500)
+  })
 }
 
 app.whenReady().then(() => {
@@ -48,6 +67,7 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => {
   stopAgentGateway()
+  destroyTray()
   if (process.platform !== "darwin") {
     app.quit()
   }
