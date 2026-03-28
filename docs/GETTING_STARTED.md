@@ -1,13 +1,31 @@
 # Getting Started
 
-## Who This Is For
+If you already know what `Codex.Bridge` is and only want the shortest path to a working setup, start here.
 
-If you already understand what `codex-bridge` is and just want the shortest path to running it, start here.
-
-If you still need the product-level overview first, read:
+If you still need the product overview first, read:
 [README.en.md](../README.en.md)
 
-## 1. Install
+## 1. Start With The Overall Flow
+
+```text
+prepare local environment
+   |
+   v
+prepare at least one remote target
+   |
+   v
+start the desktop client
+   |
+   v
+confirm the local gateway is online
+   |
+   v
+run probe / execute
+```
+
+## 2. Prepare The Local Environment
+
+Run in the project root:
 
 ```bash
 python -m venv .venv
@@ -16,13 +34,27 @@ pip install -e .
 pip install pytest
 ```
 
-## 2. Prepare a Target
+If your goal is simply to launch the desktop client, you can also start with:
 
-### Windows
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\launch-bridge-client.ps1
+```
 
-- The remote Windows machine has OpenSSH Server enabled
-- You have a login account
-- The machine is reachable from your current network
+That script launches the desktop client and prepares the local runtime.
+
+## 3. Prepare A Target
+
+### 3.1 Windows
+
+Preconditions:
+
+```text
+target Windows machine has OpenSSH Server enabled
+   |
+   +--> you have a login account
+   +--> the host is reachable from your machine
+   +--> you already have a password or private key
+```
 
 Add a Windows host:
 
@@ -35,12 +67,18 @@ powershell -ExecutionPolicy Bypass -File .\scripts\add-windows-host.ps1 `
   -KeyPath D:\remote-agent-bridge\data\ssh\localhost_ed25519
 ```
 
-### Android
+### 3.2 Android
 
-- Android platform-tools are installed locally
-- The phone has USB debugging or wireless debugging enabled
+Preconditions:
 
-Use the helper script to check adb, discover devices, and save a target:
+```text
+Android platform-tools are installed locally
+   |
+   +--> the phone has USB or wireless debugging enabled
+   +--> adb can see the device
+```
+
+Use the helper script to check `adb`, discover devices, and save a target:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup-android-device.ps1 `
@@ -49,33 +87,38 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup-android-device.ps1 `
   -Probe
 ```
 
-## 3. Start the Desktop Client
+## 4. Start The Desktop Client
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\launch-bridge-client.ps1
 ```
 
-When the desktop client starts, it also starts the local agent gateway:
+When it starts, it also brings up:
 
 ```text
+desktop client
+   +
+local agent gateway
+   |
+   v
 http://127.0.0.1:8765
 ```
 
-## 4. Smallest Useful Flow
+## 5. Run The Smallest Useful Validation
 
-### Check health
+### 5.1 Check health
 
 ```bash
 curl http://127.0.0.1:8765/health
 ```
 
-### List saved targets
+### 5.2 List saved targets
 
 ```bash
 curl http://127.0.0.1:8765/api/targets
 ```
 
-### Probe a target
+### 5.3 Probe a target
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/probe \
@@ -83,7 +126,7 @@ curl -X POST http://127.0.0.1:8765/api/probe \
   -d '{"target":"localhost"}'
 ```
 
-### Execute a command
+### 5.4 Execute a command
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/command/execute \
@@ -91,28 +134,35 @@ curl -X POST http://127.0.0.1:8765/api/command/execute \
   -d '{"target":"localhost","shell":"powershell","command":"Get-Date"}'
 ```
 
-## 5. Android Gateway
+## 6. Android Starting Points
 
 The formal Android HTTP APIs are documented in:
 [AGENT_GATEWAY.md](../AGENT_GATEWAY.md)
 
-Good starting points:
+Common entry points:
 
-- `GET /api/android/devices`
-- `GET /api/android/devices/:serial/info`
-- `POST /api/android/devices/:serial/files/list`
-- `POST /api/android/devices/:serial/files/read`
-- `POST /api/android/devices/:serial/files/mkdir`
-- `POST /api/android/devices/:serial/files/write`
-- `POST /api/android/devices/:serial/files/push`
+```text
+GET  /api/android/devices
+GET  /api/android/devices/:serial/info
+POST /api/android/devices/:serial/files/list
+POST /api/android/devices/:serial/files/read
+POST /api/android/devices/:serial/files/mkdir
+POST /api/android/devices/:serial/files/write
+POST /api/android/devices/:serial/files/push
+```
 
-## 6. More Documents
+## 7. Where To Look Next
 
-- Product overview:
-  [README.en.md](../README.en.md)
-- Gateway API:
-  [AGENT_GATEWAY.md](../AGENT_GATEWAY.md)
-- Project design:
-  [PROJECT_DESIGN.md](../PROJECT_DESIGN.md)
-- Real-device status:
-  [REAL_DEVICE_VALIDATION.md](../REAL_DEVICE_VALIDATION.md)
+```text
+if the client does not start cleanly
+  -> docs/DEVELOPMENT.md
+
+if you need endpoint details
+  -> AGENT_GATEWAY.md
+
+if you need the architecture
+  -> PROJECT_DESIGN.md
+
+if you need real-device status
+  -> REAL_DEVICE_VALIDATION.md
+```

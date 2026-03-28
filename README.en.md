@@ -1,108 +1,157 @@
-# <img src="./docs/assets/mengo.png" alt="Codex.Bridge icon" width="28" /> codex-bridge
+<div align="center">
+  <img src="./docs/assets/mengo.png" alt="Codex.Bridge icon" width="72" />
+  <h1>Codex.Bridge</h1>
 
-[![Platform](https://img.shields.io/badge/platform-Windows%20%2B%20Android-16A34A)](./AGENT_GATEWAY.md)
-[![Desktop](https://img.shields.io/badge/client-Electron%20%2B%20React-111827)](./desktop-client)
-[![Gateway](https://img.shields.io/badge/gateway-Local%20HTTP%20API-0F766E)](./AGENT_GATEWAY.md)
-[![Docs](https://img.shields.io/badge/docs-Getting%20Started-2563EB)](./docs/GETTING_STARTED.md)
-[![GitHub stars](https://img.shields.io/github/stars/Huangcoolbo/codex-bridge?style=flat)](https://github.com/Huangcoolbo/codex-bridge/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/Huangcoolbo/codex-bridge?style=flat)](https://github.com/Huangcoolbo/codex-bridge/network/members)
+  <p>
+    <a href="./docs/GETTING_STARTED.md">Getting Started</a> ·
+    <a href="./AGENT_GATEWAY.md">Gateway API</a> ·
+    <a href="./PROJECT_DESIGN.md">Project Design</a> ·
+    <a href="./docs/DEVELOPMENT.md">Development</a> ·
+    <a href="./REAL_DEVICE_VALIDATION.md">Real Device Validation</a> ·
+    <a href="./CHANGELOG.md">CHANGELOG</a>
+  </p>
 
-[中文首页](./README.md)
+  <p><a href="./README.md">中文首页</a></p>
 
-> Make Codex do real remote work on Windows and Android instead of only suggesting commands.
+  <p>
+    <a href="./AGENT_GATEWAY.md"><img src="https://img.shields.io/badge/platform-Windows%20%2B%20Android-16A34A" alt="Platform" /></a>
+    <a href="./desktop-client"><img src="https://img.shields.io/badge/client-Electron%20%2B%20React-111827" alt="Desktop" /></a>
+    <a href="./AGENT_GATEWAY.md"><img src="https://img.shields.io/badge/gateway-Local%20HTTP%20API-0F766E" alt="Gateway" /></a>
+    <a href="./docs/GETTING_STARTED.md"><img src="https://img.shields.io/badge/docs-Getting%20Started-2563EB" alt="Docs" /></a>
+    <a href="https://github.com/Huangcoolbo/codex-bridge/stargazers"><img src="https://img.shields.io/github/stars/Huangcoolbo/codex-bridge?style=flat" alt="GitHub stars" /></a>
+    <a href="https://github.com/Huangcoolbo/codex-bridge/network/members"><img src="https://img.shields.io/github/forks/Huangcoolbo/codex-bridge?style=flat" alt="GitHub forks" /></a>
+  </p>
+</div>
 
-## ✨ What This Is
+> Make Codex perform real remote work on Windows and Android instead of only printing commands.
 
-`codex-bridge` is a local execution gateway for Codex / agents.
+## 1. What This Is
 
-It brings these pieces together into one product surface:
+`Codex.Bridge` is a local execution gateway for Codex / agents.
+
+It is not a remote desktop product, not just a thin SSH/ADB wrapper, and not only a manual control panel. Its job is different:
+
+```text
+User asks for an outcome
+   |
+   v
+Codex decides what should happen
+   |
+   v
+Codex.Bridge connects, probes, reads, executes, and writes
+   |
+   v
+Windows / Android return real results
+```
+
+It brings these pieces into one product surface:
 
 - Windows: SSH + PowerShell
 - Android: ADB + controlled APIs
 - Electron desktop client
 - local HTTP gateway
 
-It is not a remote desktop tool, and it is not just a thin SSH/ADB wrapper.  
-The split is simple:
+## 2. What You Get When You Launch It
 
-- the user asks for an outcome
-- Codex decides what to do
-- `codex-bridge` sends that action to the right remote path
+Once it starts, you get two things at the same time:
 
-## 🤔 What Problem It Solves
+```text
+┌──────────────────────┐
+│ Desktop Client       │  for human setup, debugging, and result review
+└──────────────────────┘
 
-Without a bridge like this, many “AI should help me operate a remote system” workflows collapse into:
+┌──────────────────────┐
+│ Local HTTP Gateway   │  for Codex / agent calls
+│ http://127.0.0.1:8765│
+└──────────────────────┘
+```
 
-- manually switching between SSH and adb
-- copying commands in and pasting results back out
-- AI giving advice without a stable way to execute it
-- scripts and one-off commands scattered across local machines
+Both use the same underlying execution path, so:
 
-`codex-bridge` fixes that by:
+- what a human clicks in the client, and
+- what Codex calls through the gateway
 
-- registering targets once
-- exposing formal operations through a local gateway
-- returning structured results
-- opening Android writes gradually through controlled APIs instead of raw unrestricted shell
+ultimately go through the same bridge logic.
 
-## 👤 Who It Is For
+## 3. What Problem It Solves
 
-- people who want Codex to actually operate remote devices
-- people who work with both Windows and Android targets
-- people who do not want their workflow split across terminals, shell history, SSH, and adb
-- people who want a local gateway now and room to grow into Linux later
+Without a bridge like this, “AI should help me operate remote systems” often collapses into a manual loop:
 
-## 🧠 What Codex Does Here
+```text
+switch SSH
+  -> copy command
+  -> paste result
+  -> switch adb
+  -> copy paths
+  -> paste output back to AI
+```
 
-The responsibility split is:
+`Codex.Bridge` turns that into a stable product path:
 
-- Codex thinks
-- `codex-bridge` connects and executes
-- remote devices return real results
+- targets are registered once
+- operations are exposed formally
+- results come back in a structured shape
+- Android writes are opened gradually behind explicit boundaries
+- human UI and agent calls stop drifting into two different worlds
 
-A simple mental model:
+## 4. Shortest Useful Path
 
-- Codex is the brain
-- `codex-bridge` is the arm
-- Windows / Android are the real systems being operated
-
-## 🚀 How a User Uses It
-
-The shortest useful flow is only 3 steps:
-
-1. Start the desktop client
-2. Save a Windows host or Android device
-3. Let Codex probe, read, execute, or write through the local gateway
-
-That means the user no longer needs to:
-
-- manually switch SSH sessions
-- type raw adb shell commands
-- copy paths around by hand
-- paste stdout/stderr back to Codex every time
-
-### Start the client first
+Start the client:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\launch-bridge-client.ps1
 ```
 
-Once it starts, you get two things:
+Then use the shortest useful flow:
 
-- a desktop client for human target setup and debugging
-- a local gateway for Codex / agents at `http://127.0.0.1:8765`
+```text
+Start the client
+   |
+   v
+Save a Windows host or Android device
+   |
+   v
+Let Codex call probe / execute / files through the local gateway
+   |
+   v
+Read state, output, and results in the desktop client
+```
 
-If you want the full install and startup flow, go to:
+If you want the exact install and startup steps, go to:
 [Getting Started](./docs/GETTING_STARTED.md)
 
-## 📦 What It Can Do Today
+## 5. What You See In The Client
+
+The client is meant to feel like a desktop workbench, not a generic admin form.
+
+```text
+┌───────────────┬──────────────────────────┬──────────────────┐
+│ Left rail      │ Middle work area          │ Right panel        │
+├───────────────┼──────────────────────────┼──────────────────┤
+│ Overview       │ discover hosts            │ current target     │
+│ Android        │ edit connection details   │ output and result  │
+│ Windows / Linux│ probe / execute / files   │                    │
+└───────────────┴──────────────────────────┴──────────────────┘
+```
+
+The current main path is:
+
+```text
+discover target
+  -> probe
+  -> save after success
+  -> execute commands or file actions
+  -> inspect output
+```
+
+## 6. What It Can Do Today
 
 ### Windows
 
 - save targets
 - probe connectivity
 - execute PowerShell
-- return structured results
+- return `stdout / stderr / exit_code`
 
 ### Android
 
@@ -117,51 +166,62 @@ If you want the full install and startup flow, go to:
 ### Gateway
 
 - list targets
-- manage current target / current Android device
+- set current target / current Android device
 - probe
 - execute
 - read the last result
 
-## 🧪 Typical Scenarios
+## 7. Typical Scenarios
 
-### 1. Inspect a Windows machine
+### Scenario 1: Inspect a Windows machine
 
-The user says:  
-“Find out why this Windows machine is failing.”
+```text
+User: find out why this Windows machine is failing
+   |
+   v
+Codex selects a target
+   |
+   v
+probe
+   |
+   v
+execute PowerShell
+   |
+   v
+return stdout / stderr / exit_code
+```
 
-Codex can:
+### Scenario 2: Read files from an Android device
 
-- select a target
-- probe connectivity
-- execute PowerShell
-- read `stdout / stderr / exit_code`
+```text
+User: show me what is in my phone's Download folder
+   |
+   v
+Codex lists devices
+   |
+   v
+reads device info
+   |
+   v
+lists the directory / reads files
+```
 
-### 2. Read files from an Android device
+### Scenario 3: Perform controlled Android writes
 
-The user says:  
-“Show me what is in my phone’s Download folder.”
+```text
+User: create a workspace in Documents on my phone and write a note
+   |
+   v
+Codex calls files/mkdir
+   |
+   v
+Codex calls files/write or files/push
+   |
+   v
+write stays inside controlled allowlisted paths
+```
 
-Codex can:
-
-- list devices
-- inspect device info
-- list a directory
-- read files
-
-### 3. Perform controlled Android writes
-
-The user says:  
-“Create a workspace in Documents on my phone and write a note into it.”
-
-Codex can already call:
-
-- `files/mkdir`
-- `files/write`
-- `files/push`
-
-Those writes are controlled product APIs, not unrestricted raw shell.
-
-## 🏗️ Architecture
+## 8. Technical Shape
 
 ```text
 User
@@ -170,7 +230,7 @@ User
 Codex
   |
   v
-codex-bridge Desktop Client
+Codex.Bridge Desktop Client
   |
   +--> Renderer (human UI)
   |
@@ -178,8 +238,8 @@ codex-bridge Desktop Client
          |
          +--> Local HTTP Gateway
          |      |
-         |      +--> Target management
-         |      +--> Probe / Execute
+         |      +--> target management
+         |      +--> probe / execute
          |      +--> Android controlled APIs
          |
          +--> Service layer
@@ -189,41 +249,54 @@ codex-bridge Desktop Client
                 +--> Android bridge -> ADB -> controlled file/device actions
 ```
 
-## 🔌 Why It Is Better Than Manual SSH / ADB
+For the full architecture snapshot, go to:
+[Project Design](./PROJECT_DESIGN.md)
 
-- it gives Codex formal interfaces instead of “please run this in a terminal”
-- it turns targets, state, and results into one consistent model
-- it supports both human UI debugging and agent-driven automation
-- it keeps Android write capabilities behind explicit boundaries
-- it is already shaped to grow into Linux support
+## 9. Why It Is Better Than Manual SSH / ADB
 
-## 📚 Docs
+Its value is not “one more wrapper.” Its value is that the calling model is cleaned up:
 
-- Getting started:
-  [docs/GETTING_STARTED.md](./docs/GETTING_STARTED.md)
-- Gateway API:
-  [AGENT_GATEWAY.md](./AGENT_GATEWAY.md)
-- Changelog:
-  [CHANGELOG.md](./CHANGELOG.md)
-- Project design:
-  [PROJECT_DESIGN.md](./PROJECT_DESIGN.md)
-- Development notes:
-  [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md)
-- Real-device status:
-  [REAL_DEVICE_VALIDATION.md](./REAL_DEVICE_VALIDATION.md)
+- Codex gets formal interfaces instead of “run this in a terminal”
+- targets, state, and results live inside one consistent model
+- human UI and agent automation share the same foundation
+- Android write capability is gated behind explicit boundaries
+- the structure already leaves room for Linux later
 
-## 📍 Current Status
+## 10. Which Document To Read Next
 
-This repository is already beyond a pure concept demo:
+```text
+if you want to run it quickly
+  -> docs/GETTING_STARTED.md
+
+if you want to integrate Codex / agent calls
+  -> AGENT_GATEWAY.md
+
+if you want to really understand the architecture
+  -> PROJECT_DESIGN.md
+
+if you want to extend the project
+  -> docs/DEVELOPMENT.md
+
+if you want to see real-device validation status
+  -> REAL_DEVICE_VALIDATION.md
+```
+
+## 11. Current Status
+
+This repository is already beyond concept-demo level:
 
 - the localhost Windows SSH path is working
-- the Android USB debugging path is working on a real device
+- the Android USB debugging path is working
 - the Android gateway already supports read APIs plus the first controlled write APIs
-- the Electron client and HTTP gateway share the same underlying logic
+- the desktop client and HTTP gateway share the same underlying execution logic
+- the desktop client already supports installer builds, update checks, and installer handoff
 
-## 🛣️ Next
+## 12. What Comes Next
 
-- Android `files/delete`
-- Android `input tap / input text`
-- Linux support
-- stronger safety and session controls
+```text
+Android files/delete
+Android input tap / input text
+Linux path
+stronger safety controls
+stronger session controls
+```

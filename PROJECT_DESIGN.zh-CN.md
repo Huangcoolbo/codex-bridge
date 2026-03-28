@@ -1,297 +1,662 @@
-# codex-bridge 项目设计说明（v1.1）
+# codex-bridge 项目设计说明（2026-03）
 
 [English Version](./PROJECT_DESIGN.md)
 
-## 1. 项目目标
+## 1. 项目定位
 
-`codex-bridge` 的目标不是自己替用户分析远程系统上的问题，而是作为一座“桥”，把**本地 Codex 的操作能力延伸到远程设备**。
+`codex-bridge` 不是远程桌面，不是单纯的 SSH/ADB 命令包装器，也不是一个只给人手动点界面的远程管理工具。
 
-它的核心定位是：
+它当前的定位可以直接概括成：
 
-- **本地 Codex 负责思考、判断、决定下一步动作**
-- **桥负责把动作送到正确的远程执行路径，并把结果带回来**
-- **远程电脑或手机负责真正执行这些动作**
+```text
+User
+  |
+  v
+Codex / Agent
+  |
+  v
+codex-bridge
+  |
+  +--> 负责选择目标
+  +--> 负责发起远程动作
+  +--> 负责返回结构化结果
+  |
+  v
+Windows / Android
+```
 
-当前 v1.1 的方向是：
+它解决的核心问题不是“怎么连上一台机器”，而是：
 
-- 保留已经成型的 **Windows + SSH + PowerShell** 路径
-- 新增并行的 **Android + ADB + shell** 路径
-- 保持模块化结构，后续扩 Linux 或替换 transport 时，不需要重写 CLI 和 service 主流程
-
----
-
-## 2. 核心设计思想
-
-这个项目解决的不是“远程文件同步”，也不是“远程桌面”，更不是一开始就做成“大而全”的自动化平台。
-
-它解决的是：
-
-> 如何让本地运行的 Codex，像把手伸到远程设备上一样，连续地下达动作并获取结果。
-
-所以这个项目的核心思想是：
-
-- **脑子在本地**
-- **动作在远程**
-- **桥负责连接这两边**
-
-桥的第一职责不是“理解任务”，而是：
-
-- 传递命令
-- 返回结果
-- 保持跨平台调用方式统一
+> 如何把 Codex 的决策能力，稳定地延伸到远程 Windows 和 Android，并且让这条链路既能给人用，也能给程序用。
 
 ---
 
-## 3. 核心模块
+## 2. 当前系统全景
 
-### 模块一：本地 Codex
+当前项目已经不是早期的单一 Python CLI 形态，而是一个三层系统：
 
-职责：
+```text
+┌──────────────────────────────────────────────┐
+│                 用户 / Codex                  │
+└──────────────────────────────────────────────┘
+                     │
+         ┌───────────┴───────────┐
+         │                       │
+         v                       v
+┌──────────────────┐   ┌──────────────────────┐
+│ Electron 桌面客户端 │   │ Local HTTP Gateway     │
+│ 给人配置 / 调试 / 看结果 │   │ 给 Codex / agent 调用  │
+└──────────────────┘   └──────────────────────┘
+         │                       │
+         └───────────┬───────────┘
+                     v
+┌──────────────────────────────────────────────┐
+│            Electron Main / Service Layer      │
+│  target 管理 / probe / execute / Android API  │
+└──────────────────────────────────────────────┘
+                     │
+      ┌──────────────┴──────────────┐
+      │                             │
+      v                             v
+┌────────────────────┐    ┌─────────────────────┐
+│ Python bridge       │    │ Android gateway      │
+│ Windows / SSH 主路径 │    │ ADB 受控设备与文件接口 │
+└────────────────────┘    └─────────────────────┘
+      │                             │
+      v                             v
+┌───────────────┐          ┌────────────────────┐
+│ SSH -> Windows │          │ ADB -> Android      │
+│ PowerShell     │          │ shell / file ops    │
+└───────────────┘          └────────────────────┘
+```
 
-- 接收用户任务
-- 决定下一步做什么
-- 组织多步操作
-- 根据远程结果继续判断
+一句话说：
 
-本地 Codex 是“脑子”，它不直接操作远程系统，而是通过桥发出动作。
-
----
-
-### 模块二：桥（codex-bridge）
-
-职责：
-
-- 管理远程主机和设备资料
-- 选择正确的 provider / adapter 组合
-- 把本地动作传到远程执行环境
-- 接收远程执行结果
-- 以统一格式返回结果
-
-桥不是执行者，也不是分析者。桥的本质是：
-
-> 让本地 Codex 能稳定、连续、可重复地操作远程系统。
-
----
-
-### 模块三：远程执行端
-
-远程执行端是平台相关的。
-
-当前已支持的两条路径：
-
-- **Windows + PowerShell over SSH**
-- **Android shell over ADB**
-
-职责：
-
-- 接收桥送来的命令
-- 在远程系统上实际执行
-- 访问远程文件、目录、进程、日志等资源
-- 返回输出、错误信息和执行状态
-
-在 v1.1 里，仍然不额外开发远程常驻 agent。
-
-原因是：
-
-- PowerShell 和 Android shell 已经能覆盖当前最小执行需求
-- 可以降低远程侧部署复杂度
-- 更适合先验证 provider / adapter 架构是否站得住
-
-后续如果需求变复杂，再考虑把第三模块升级成专门的远程执行代理。
+- **桌面客户端**负责给人配置和观察
+- **本地 HTTP gateway**负责给 Codex / agent 程序化调用
+- **bridge / service**负责把动作送进正确的远程执行路径
 
 ---
 
-## 4. 关键设计规则：平台与连接方式分离
+## 3. 当前代码分层
 
-项目不能把某一条路径写死成：
+当前项目最重要的不是文件列表，而是“哪一层负责什么”。
 
-- Windows = SSH = PowerShell
+```text
+desktop-client/
+  ├─ src/renderer/
+  │    UI、交互、状态展示、顶部栏动画
+  │
+  ├─ src/preload/
+  │    给 renderer 暴露受控 API
+  │
+  ├─ src/main/
+  │    Electron main
+  │    ├─ IPC handlers
+  │    ├─ local HTTP gateway
+  │    ├─ update service
+  │    ├─ tray service
+  │    └─ startup bootstrap
+  │
+  └─ release/
+       打包后的安装包 / 发布产物
 
-而是要明确：
+src/remote_agent_bridge/
+  ├─ service.py
+  ├─ factory.py
+  ├─ adapters/
+  │    ├─ ssh.py
+  │    └─ adb.py
+  └─ providers/
+       ├─ windows.py
+       └─ android.py
 
-- **provider 表达平台能力**
-- **adapter 表达连接方式**
-- **factory 根据主机资料装配二者**
+scripts/
+  ├─ bootstrap-client-runtime.ps1
+  ├─ authorize-managed-ssh-key.ps1
+  └─ launch-bridge-client.ps1
+```
 
-也就是说：
+可以把职责理解成：
 
-- Windows 语义在 `providers/windows.py`
-- Android 语义在 `providers/android.py`
-- SSH 连接在 `adapters/ssh.py`
-- ADB 连接在 `adapters/adb.py`
-
-这层分离，是项目可扩展性的核心。
-
----
-
-## 5. 当前阶段的目标能力
-
-### 第一优先级：稳定远程执行
-
-- 远程执行命令
-- 返回标准输出
-- 返回错误输出
-- 返回执行状态
-
-### 第二优先级：结构化远程检查
-
-- 读取远程文件
-- 列出远程目录
-- 写入远程文件
-- 搜索文本
-- 获取系统信息
-
-### 第三优先级：围绕 Codex 的连续操作能力
-
-- 多步上下文
-- 远程工作目录概念
-- 批量动作
-- 更清晰的结果结构
-- 更强的安全控制
-
----
-
-## 6. 当前阶段不做什么
-
-为了避免项目一开始就过重，当前阶段明确不做这些：
-
-- 不做远程桌面
-- 不做 GUI 自动化
-- 不在远程端部署额外 agent
-- 不把复杂分析逻辑塞进桥里
-- 不把桥做成“大而全”的通用平台
-
-当前阶段只做一件事：
-
-> 让本地 Codex 能通过模块化桥接路径，可靠地向远程 Windows 和 Android 系统发出动作。
+```text
+renderer   = 你看到和操作的界面
+preload    = renderer 和 main 之间的窄桥
+main       = 桌面客户端后端
+bridge     = 真正跨 SSH / ADB 执行动作的底层
+scripts    = 启动、授权、打包后的运行时准备
+```
 
 ---
 
-## 7. 当前代码结构与职责分工
+## 4. 当前主路径
 
-### 启动与命令入口
+### 4.1 人类使用路径
 
-- `__main__.py`：启动程序
-- `cli.py`：接收命令并分发请求
+```text
+用户打开桌面客户端
+   |
+   v
+配置 Windows / Android 目标
+   |
+   v
+点击探测 / 执行 / 读取
+   |
+   v
+Electron Main 接管请求
+   |
+   v
+bridge / service 走 SSH 或 ADB
+   |
+   v
+远程返回 stdout / stderr / exit_code
+   |
+   v
+结果回到 UI
+```
 
-### 调度与数据
+### 4.2 Codex / agent 使用路径
 
-- `service.py`：协调整个流程
-- `models.py`：定义主机资料和结果格式
-- `storage.py`：保存和读取主机资料
-- `exceptions.py`：统一错误表达
+```text
+Codex / agent
+   |
+   v
+POST /api/targets / /api/probe / /api/command/execute
+   |
+   v
+Local HTTP Gateway
+   |
+   v
+Electron Main services
+   |
+   v
+Python bridge 或 Android gateway
+   |
+   v
+远程目标
+```
 
-### 装配逻辑
+项目最重要的设计点就是：
 
-- `factory.py`：根据 `platform + transport` 组合创建执行链路
+```text
+同一套底层能力
+   ├─ 可以给 UI 用
+   └─ 也可以给 HTTP gateway 用
+```
 
-### 连接层
-
-- `adapters/base.py`：连接层共同规则
-- `adapters/ssh.py`：Windows 使用的 SSH 通道
-- `adapters/adb.py`：Android 使用的 ADB 通道
-
-### 平台层
-
-- `providers/base.py`：平台能力共同规则
-- `providers/windows.py`：把远程 Windows 操作转换成 PowerShell 执行动作
-- `providers/android.py`：把远程 Android 操作转换成 shell + adb 执行动作
-
----
-
-## 8. 一次典型调用的数据流
-
-以“检查远程日志文件”为例，理想数据流是：
-
-1. 用户给本地 Codex 一个任务
-2. 本地 Codex 决定先检查远程路径或读取文件
-3. Codex 通过桥发出远程动作
-4. 桥根据主机资料选择正确的 provider / adapter 路径
-5. 远程执行端执行动作
-6. 执行结果返回给桥
-7. 桥把结果交回本地 Codex
-8. Codex 继续决定下一步动作
-
-这个过程的关键点是：
-
-- 判断在本地
-- 执行在远程
-- 平台/连接方式切换在桥内部完成
-
----
-
-## 9. 当前验证状态
-
-代码结构上，现在已经支持两条路径：
-
-- Windows + SSH + PowerShell
-- Android + ADB + shell
-
-但“代码已支持”不等于“真实环境已验证”。
-
-当前阶段仍未真正完成，直到：
-
-- 至少一台真实 Windows 主机完成端到端联调
-- 至少一台真实 Android 设备完成端到端联调
-- `workflow` 这种多步调用在真实目标上被证明可闭环
+所以 UI 不是唯一入口，HTTP gateway 也不是独立重复实现。
 
 ---
 
-## 10. 后续扩展方向
+## 5. 关键设计规则
 
-### 平台扩展
+### 5.1 平台能力和连接方式分离
 
-- 支持 Linux
-- 细化 Android 变体支持
+项目明确不把某条路径写死成：
 
-### 能力扩展
+```text
+Windows = SSH = PowerShell
+Android = ADB = shell
+```
 
-- 上传文件
-- 下载文件
-- 更安全地修改文件
-- 服务控制
-- 日志采集
+而是拆成：
 
-### 执行模型扩展
+```text
+provider  = 平台语义
+adapter   = 连接方式
+factory   = 按资料装配两者
+```
 
-- 保持会话上下文
-- 增加动作队列
-- 增加更强的结果结构化能力
-- 增加安全策略和审批机制
+```text
+HostProfile(platform, transport)
+            |
+            v
+         factory
+            |
+   ┌────────┴────────┐
+   v                 v
+adapter           provider
+```
 
-### 远程执行端升级
+对应当前实现：
 
-当 PowerShell 或 adb shell 方式不够用时，再考虑：
+```text
+providers/windows.py   -> Windows 平台语义
+providers/android.py   -> Android 平台语义
+adapters/ssh.py        -> SSH 通道
+adapters/adb.py        -> ADB 通道
+factory.py             -> 组合它们
+```
 
-- 开发远程常驻执行代理
-- 降低重复连接和重复启动开销
-- 提供更稳定的持续操作能力
+这意味着后续扩 Linux 时，不需要推翻现有主流程。
+
+### 5.2 UI 和 Gateway 共用同一套能力
+
+项目不希望出现这种情况：
+
+```text
+UI 自己一套执行逻辑
+Gateway 自己另一套执行逻辑
+```
+
+当前更接近：
+
+```text
+UI ----------┐
+             v
+          main services
+             |
+Gateway -----┘
+             |
+             v
+      bridge / Android gateway
+```
+
+这能减少：
+
+- UI 状态和网关状态不一致
+- 两套逻辑各自修 bug
+- “界面能用，API 不能用”或反过来的问题
 
 ---
 
-## 11. 当前阶段完成标准
+## 6. 运行时与打包结构
 
-当前阶段只有满足下面这些条件，才算真正完成：
+当前项目已经支持开发态和打包态两套运行方式。
 
-- 本地能稳定配置 Windows/SSH 和 Android/ADB 两类目标
-- 桥能自动装配正确执行路径
-- 远程目标能执行命令并返回结构化结果
-- 本地 Codex 能基于这些结果继续下一步判断
-- 两条已支持路径都完成过真实场景验证
+### 6.1 开发态
 
-如果只是“代码已经写了”，但没有把链路跑通，就不能算完成。
+```text
+D:\remote-agent-bridge
+  ├─ src/
+  ├─ desktop-client/
+  ├─ scripts/
+  └─ data/
+```
+
+### 6.2 打包态
+
+```text
+安装目录
+  └─ Codex.Bridge.exe
+
+用户数据目录
+  └─ AppData\Roaming\codex-bridge-desktop-client
+       ├─ runtime/
+       ├─ data/
+       ├─ updates/
+       └─ logs / cache
+```
+
+打包态的关键点是：
+
+```text
+程序文件 ≠ 用户数据
+安装目录 ≠ 配置目录
+```
+
+这也是为什么升级新版本时，配置通常不会丢。
 
 ---
 
-## 12. 一句话总结
+## 7. 启动链路
 
-`codex-bridge` v1.1 的真正目标是：
+当前桌面客户端不是“只打开一个壳子”，启动时还会准备本地运行环境。
 
-> **把本地 Codex 的操作能力，通过模块化桥接路径，同时延伸到远程 Windows 和 Android，而不是把平台逻辑和某一种连接方式写死在一起。**
+```text
+启动安装版 / exe
+   |
+   v
+Electron main 创建窗口
+   |
+   v
+did-finish-load 之后启动后台服务
+   |
+   +--> 本地 HTTP gateway
+   +--> startup bootstrap
+   +--> update check
+   +--> tray
+```
+
+### 7.1 bootstrap 负责什么
+
+```text
+bootstrap-client-runtime.ps1
+   |
+   +--> 检查 runtime 目录
+   +--> 检查 Python 依赖是否完整
+   +--> 必要时补装 bridge 依赖
+   +--> 检查 localhost 自管 SSH key
+   +--> 检查 adb / 环境准备
+```
+
+当前已经做过一轮重要修正：
+
+- 不再只看 `.venv` 是否存在
+- 而是检查关键依赖是否真的能导入
+
+这避免了“环境只创建了一半但被当成完整”的问题。
 
 ---
 
-## 13. 协作回复规范（长期约定）
+## 8. Windows 执行链路
+
+当前 Windows 主路径仍然是：
+
+```text
+Target
+  -> SSH
+  -> PowerShell
+  -> structured result
+```
+
+### 8.1 Windows probe / execute 数据流
+
+```text
+renderer / gateway
+   |
+   v
+bridgeService
+   |
+   v
+Python BridgeService
+   |
+   v
+factory -> ssh adapter + windows provider
+   |
+   v
+SSH connect
+   |
+   v
+PowerShell script on remote host
+   |
+   v
+stdout / stderr / exit_code
+```
+
+### 8.2 Windows SSH 密钥认证流
+
+当 Windows 目标使用 `SSH + keyPath` 连接时，客户端里配置的不是“远程密钥路径”，而是**本地私钥路径**。
+
+真正的认证关系是：
+
+- 本地保存私钥
+- 由私钥推导出公钥
+- 把公钥放到远程 Windows 的允许登录白名单里
+- SSH 建连时，本地用私钥证明身份，远程用公钥验证
+
+可以把它理解成：
+
+- **本地私钥 = 你手里的钥匙**
+- **远程 authorized_keys = 门锁认可的钥匙指纹列表**
+
+```text
+┌──────────────────────────────┐
+│  Codex.Bridge 客户端本地机器  │
+└──────────────────────────────┘
+             │
+             │ 1. 生成一对密钥
+             ▼
+   私钥: localhost_ed25519
+   公钥: localhost_ed25519.pub
+
+             │
+             │ 2. 私钥留在本地
+             ▼
+   本地配置里保存的是：
+   - host
+   - port
+   - user
+   - keyPath -> 指向本地私钥
+
+             │
+             │ 3. 公钥复制到远程主机
+             ▼
+
+┌──────────────────────────────┐
+│      远程 Windows 主机        │
+└──────────────────────────────┘
+             │
+             │ 4. sshd 读取公钥白名单
+             ▼
+
+   普通用户常见位置：
+   C:\Users\<user>\.ssh\authorized_keys
+
+   管理员账号常见位置：
+   C:\ProgramData\ssh\administrators_authorized_keys
+
+             │
+             │ 5. 客户端发起 SSH 连接
+             ▼
+
+   客户端：
+   “我用本地私钥证明我是对应钥匙的持有者”
+
+             │
+             │ 6. 远程 sshd 验证
+             ▼
+
+   远程主机：
+   “我检查这把私钥对应的公钥，
+    是否在我的 authorized_keys 白名单里”
+
+             │
+      匹配成功 / 匹配失败
+             ▼
+
+        成功登录 / 认证失败
+```
+
+这个项目里：
+
+```text
+keyPath                        -> 本地私钥路径
+adapters/ssh.py                -> 读取私钥并连接
+authorized_keys                -> 远程公钥白名单
+administrators_authorized_keys -> 管理员账号常见白名单
+```
+
+---
+
+## 9. Android 执行链路
+
+Android 这条线和 Windows 不完全一样。
+
+当前它分成两部分：
+
+```text
+部分旧能力：Python bridge + adb adapter
+部分新能力：Electron main Android gateway
+```
+
+### 9.1 当前 Android gateway 方向
+
+```text
+HTTP / UI
+   |
+   v
+androidGatewayService
+   |
+   +--> devices / info
+   +--> files/list
+   +--> files/read
+   +--> files/pull
+   +--> files/mkdir
+   +--> files/write
+   +--> files/push
+   |
+   v
+ADB
+   |
+   v
+Android device
+```
+
+### 9.2 为什么 Android 写操作要分层
+
+当前项目的策略不是直接开放任意 raw `adb shell`，而是：
+
+```text
+只读优先
+   |
+   v
+受控写入
+   |
+   v
+更高风险能力后置
+```
+
+目前已经正式产品化的低风险写能力是：
+
+```text
+files/mkdir
+files/write
+files/push
+```
+
+这些能力都带限制：
+
+- 白名单目录
+- 文本写入模式限制
+- 文件大小限制
+- 不直接裸开放任意 shell 修改
+
+---
+
+## 10. 当前数据与持久化
+
+项目当前最关键的持久化数据有三类：
+
+```text
+1. target / profile
+2. runtime / bridge 环境
+3. update / release 缓存
+```
+
+### 10.1 target 数据
+
+开发态常见：
+
+```text
+data/hosts.json
+```
+
+打包态常见：
+
+```text
+AppData\Roaming\codex-bridge-desktop-client\data\hosts.json
+```
+
+### 10.2 运行时目录
+
+```text
+AppData\Roaming\codex-bridge-desktop-client\runtime
+```
+
+这里放的是打包后 bridge 真正运行所需的：
+
+- Python runtime
+- scripts
+- src
+- `.venv`
+
+### 10.3 更新目录
+
+当前已经改成：
+
+```text
+AppData\Roaming\codex-bridge-desktop-client\updates
+```
+
+它的职责是：
+
+- 保存新下载的安装包
+- 给自动更新流程使用
+- 客户端下次启动时清理旧安装包
+
+---
+
+## 11. 当前更新子系统
+
+更新系统已经不是“打开 GitHub 页面看看有没有新版”，而是桌面端自己的正式子系统。
+
+```text
+客户端启动
+   |
+   v
+check latest release
+   |
+   v
+发现新版本
+   |
+   v
+下载到 userData/updates
+   |
+   v
+自动启动新安装包
+   |
+   v
+当前客户端退出
+   |
+   v
+安装完成后再次打开
+```
+
+它当前的目标不是“无感热更新”，而是：
+
+> 让桌面客户端自己负责检查、下载、交接给安装器，而不是让用户自己去 GitHub 找 exe。
+
+---
+
+## 12. 当前边界与暂不做的事
+
+当前项目已经能做很多事，但边界依然是明确的。
+
+```text
+现在做：
+  - Windows SSH + PowerShell
+  - Android ADB + controlled APIs
+  - Electron desktop client
+  - local HTTP gateway
+  - desktop update flow
+
+现在不做：
+  - 远程桌面
+  - GUI 自动化
+  - 任意高风险 Android raw shell 暴露
+  - 远程常驻 agent
+  - 公网开放的远程控制服务
+```
+
+这套边界是刻意的，不是功能不够，而是为了：
+
+- 先把“可控远程执行网关”站稳
+- 避免一开始就变成一个大而杂的平台
+
+---
+
+## 13. 当前阶段最重要的设计判断
+
+如果只保留一句话来描述当前版本的系统设计，那就是：
+
+```text
+Codex 负责思考
+桌面客户端和本地网关负责组织入口
+bridge / gateway 负责发起动作
+Windows / Android 负责真正执行
+```
+
+这个项目的价值不在于“又多包了一层 SSH/ADB”，而在于：
+
+```text
+把原本零散的远程连接、命令执行、文件读写、状态管理、
+更新下载和用户配置，收成了一套既能给人用、也能给 agent 用的稳定入口。
+```
+
+---
+
+## 14. 协作回复规范（长期约定）
 
 下面这段内容用于约束后续协作中的默认回复方式，属于长期协作规范。
 
