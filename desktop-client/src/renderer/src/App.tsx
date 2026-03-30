@@ -3,11 +3,9 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type JSX } fr
 import type {
   AndroidDiscoverySnapshot,
   AndroidProfileInput,
-  AndroidQrPayload,
   CommandDraft,
   CommandExecutionResult,
   DashboardSnapshot,
-  PickedImagePayload,
   ProfileDetail,
   ProfilePlatform,
   ProfileSummary,
@@ -15,21 +13,17 @@ import type {
   WindowsDiscoverySnapshot,
   WindowsProfileInput
 } from "@shared/contracts"
-
 import { COPY, detectInitialLocale, detectInitialTheme, type Locale, type SectionId, type ThemeMode } from "./locales"
 
-type BarcodeDetectorResult = { rawValue?: string }
-type BarcodeDetectorLike = {
-  detect: (source: ImageBitmap) => Promise<BarcodeDetectorResult[]>
-}
-type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorLike
 type LatestTaskState = {
   label: string
   status: "idle" | "running" | "success" | "error"
 }
+type TopbarToneState = "idle" | "success" | "error"
 type SectionProfileState = Record<ProfilePlatform, string>
 type BridgeAutomationDraftEvent = CustomEvent<CommandDraft>
 type BridgeAutomationResultEvent = CustomEvent<CommandExecutionResult>
+type AndroidTargetMode = "wireless" | "usb"
 
 const automationDraftEvent = "bridge:automation-draft"
 const automationStartEvent = "bridge:automation-command-start"
@@ -42,14 +36,6 @@ function safeStringify(value: unknown): string {
 function normalizeProfileName(value: string): string {
   const normalized = value.trim().replace(/[^a-zA-Z0-9-_]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "")
   return normalized || "host"
-}
-
-function parseNumeric(value: string | null | undefined): number | null {
-  if (!value) {
-    return null
-  }
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : null
 }
 
 function isFailedResult(result: unknown): boolean {
@@ -82,112 +68,6 @@ function formatTaskLabel(label: string, status: LatestTaskState["status"], local
   }
 
   return `${label} ${status === "success" ? "succeeded" : "failed"}`
-}
-
-function parseAndroidQrPayload(rawText: string): AndroidQrPayload {
-  const payload: AndroidQrPayload = {
-    rawText,
-    serviceName: null,
-    password: null,
-    host: null,
-    pairingPort: null,
-    connectPort: null,
-    pairEndpoint: null,
-    connectEndpoint: null
-  }
-
-  const trimmed = rawText.trim()
-  const keyValues = new Map<string, string>()
-
-  if (trimmed.startsWith("WIFI:")) {
-    for (const segment of trimmed.slice(5).split(";")) {
-      const divider = segment.indexOf(":")
-      if (divider <= 0) {
-        continue
-      }
-      keyValues.set(segment.slice(0, divider).toUpperCase(), segment.slice(divider + 1))
-    }
-  } else {
-    const normalized = trimmed.replace(/[?&]/g, ";")
-    for (const segment of normalized.split(";")) {
-      const divider = segment.includes("=") ? segment.indexOf("=") : segment.indexOf(":")
-      if (divider <= 0) {
-        continue
-      }
-      keyValues.set(segment.slice(0, divider).trim().toUpperCase(), segment.slice(divider + 1).trim())
-    }
-  }
-
-  payload.serviceName = keyValues.get("S") ?? keyValues.get("SERVICE") ?? keyValues.get("SERVICENAME") ?? null
-  payload.password = keyValues.get("P") ?? keyValues.get("PASSWORD") ?? keyValues.get("CODE") ?? null
-  payload.host = keyValues.get("H") ?? keyValues.get("HOST") ?? keyValues.get("IP") ?? null
-  payload.pairingPort = parseNumeric(keyValues.get("PAIRPORT") ?? keyValues.get("PAIRINGPORT") ?? keyValues.get("PP"))
-  payload.connectPort = parseNumeric(keyValues.get("CONNECTPORT") ?? keyValues.get("PORT") ?? keyValues.get("CP"))
-
-  const endpointMatches = [...trimmed.matchAll(/\b((?:\d{1,3}\.){3}\d{1,3}:\d{2,5})\b/g)].map((match) => match[1])
-  if (endpointMatches.length > 0) {
-    payload.pairEndpoint = endpointMatches[0]
-  }
-  if (endpointMatches.length > 1) {
-    payload.connectEndpoint = endpointMatches[1]
-  }
-
-  if (!payload.pairEndpoint && payload.host && payload.pairingPort) {
-    payload.pairEndpoint = `${payload.host}:${payload.pairingPort}`
-  }
-  if (!payload.connectEndpoint && payload.host && payload.connectPort) {
-    payload.connectEndpoint = `${payload.host}:${payload.connectPort}`
-  }
-
-  return payload
-}
-
-function resolveQrPayload(payload: AndroidQrPayload, discovery: AndroidDiscoverySnapshot | null): AndroidQrPayload {
-  if (!discovery) {
-    return payload
-  }
-
-  const resolved = { ...payload }
-
-  if (!resolved.pairEndpoint && resolved.serviceName) {
-    const matchingService = discovery.services.find((service) =>
-      service.serviceType.includes("pair") && service.instanceName.toLowerCase().includes(resolved.serviceName!.toLowerCase())
-    )
-    if (matchingService) {
-      resolved.pairEndpoint = matchingService.address
-    }
-  }
-
-  if (!resolved.connectEndpoint && resolved.host && resolved.connectPort) {
-    resolved.connectEndpoint = `${resolved.host}:${resolved.connectPort}`
-  }
-
-  return resolved
-}
-
-async function decodeQrImage(image: PickedImagePayload): Promise<string> {
-  const detectorApi = (window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector
-  if (!detectorApi) {
-    throw new Error("qr-unavailable")
-  }
-
-  const response = await fetch(image.dataUrl)
-  const blob = await response.blob()
-  const bitmap = await createImageBitmap(blob)
-
-  try {
-    const detector = new detectorApi({ formats: ["qr_code"] })
-    const results = await detector.detect(bitmap)
-    const value = results[0]?.rawValue?.trim()
-    if (!value) {
-      throw new Error("qr-empty")
-    }
-    return value
-  } finally {
-    if ("close" in bitmap) {
-      bitmap.close()
-    }
-  }
 }
 
 function sourceLabel(copy: (typeof COPY)[Locale], source: WindowsDiscoveryCandidate["source"]): string {
@@ -223,6 +103,8 @@ export default function App(): JSX.Element {
   const [androidProfileName, setAndroidProfileName] = useState("pixel-air")
   const [androidDescription, setAndroidDescription] = useState("")
   const [androidQrStatus, setAndroidQrStatus] = useState("")
+  const [androidTargetMode, setAndroidTargetMode] = useState<AndroidTargetMode>("wireless")
+  const [selectedAndroidUsbSerial, setSelectedAndroidUsbSerial] = useState("")
 
   const [windowsQuery, setWindowsQuery] = useState("")
   const [selectedWindowsCandidateId, setSelectedWindowsCandidateId] = useState("")
@@ -239,6 +121,9 @@ export default function App(): JSX.Element {
   const [selectedProfiles, setSelectedProfiles] = useState<SectionProfileState>({ windows: "", android: "", linux: "" })
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const [latestTask, setLatestTask] = useState<LatestTaskState>({ label: copy.inspector.taskReady, status: "idle" })
+  const [topbarTask, setTopbarTask] = useState<LatestTaskState>({ label: copy.inspector.taskReady, status: "idle" })
+  const [topbarTone, setTopbarTone] = useState<TopbarToneState>("idle")
+  const [topbarWarmFlash, setTopbarWarmFlash] = useState(false)
   const [validatedWindowsSignature, setValidatedWindowsSignature] = useState("")
   const profileMenuRef = useRef<HTMLDivElement | null>(null)
   const workspaceRef = useRef<HTMLElement | null>(null)
@@ -247,12 +132,43 @@ export default function App(): JSX.Element {
   useEffect(() => {
     window.localStorage.setItem("bridge-workbench-locale", locale)
     setLatestTask((current) => current.status === "idle" ? { label: copy.inspector.taskReady, status: "idle" } : current)
+    setTopbarTask((current) => current.status === "idle" ? { label: copy.inspector.taskReady, status: "idle" } : current)
+    setTopbarTone((current) => current === "idle" ? "idle" : current)
   }, [locale, copy.inspector.taskReady])
 
   useEffect(() => {
     window.localStorage.setItem("bridge-workbench-theme", theme)
     document.documentElement.dataset.theme = theme
   }, [theme])
+
+  useEffect(() => {
+    if (latestTask.status === "running") {
+      setTopbarWarmFlash(false)
+      setTopbarTask(latestTask)
+      return
+    }
+
+    if (latestTask.status === "idle") {
+      setTopbarWarmFlash(false)
+      setTopbarTask(latestTask)
+      setTopbarTone("idle")
+      return
+    }
+
+    setTopbarWarmFlash(true)
+    const swapTimeoutId = window.setTimeout(() => {
+      setTopbarTask(latestTask)
+      setTopbarTone(latestTask.status === "error" ? "error" : "success")
+    }, 530)
+    const timeoutId = window.setTimeout(() => {
+      setTopbarWarmFlash(false)
+    }, 2200)
+
+    return () => {
+      window.clearTimeout(swapTimeoutId)
+      window.clearTimeout(timeoutId)
+    }
+  }, [latestTask])
 
   const savedProfiles = dashboard?.profiles ?? []
   const activeProfilePlatform = activeSection === "windows" || activeSection === "android" || activeSection === "linux"
@@ -274,9 +190,16 @@ export default function App(): JSX.Element {
   const androidProfiles = savedProfiles.filter((profile) => profile.platform === "android")
   const androidDevices = androidDiscovery?.devices ?? []
   const androidServices = androidDiscovery?.services ?? []
+  const androidUsbDevices = androidDevices.filter((device) => device.serial.trim().length > 0)
+  const selectedAndroidUsbDevice = androidUsbDevices.find((device) => device.serial === selectedAndroidUsbSerial) ?? null
   const hasActiveAndroidSession = androidDevices.some((device) => device.state === "device")
   const canPairAndroid = pairEndpoint.trim().length > 0 && pairCode.trim().length > 0
   const canConnectAndroid = connectEndpoint.trim().length > 0
+  const androidWirelessTarget = connectEndpoint.trim()
+  const androidSaveTarget = androidTargetMode === "usb"
+    ? selectedAndroidUsbSerial.trim()
+    : androidWirelessTarget
+  const canSaveAndroid = androidProfileName.trim().length > 0 && androidSaveTarget.length > 0
   const defaultWindowsKeyPath = dashboard?.environment.defaultWindowsKeyPath ?? ""
   const topbarProgress = Math.min(workspaceScrollTop / 92, 1)
   const isTopbarSplit = topbarProgress > 0.08
@@ -293,28 +216,39 @@ export default function App(): JSX.Element {
     (windowsHost.trim() && windowsUser.trim() && (windowsAuthMethod === "password" ? windowsPassword.trim() : (windowsKeyPath.trim() || defaultWindowsKeyPath)))
   )
   const canSaveWindows = Boolean(selectedProfile || validatedWindowsSignature === windowsDraftSignature)
-  const latestTaskDisplayLabel = formatTaskLabel(latestTask.label, latestTask.status, locale)
-  const topbarStatusText = latestTask.status === "idle" ? copy.toolbar.ready : latestTaskDisplayLabel
-  const topbarStatusClass = latestTask.status === "error"
+  const topbarTaskDisplayLabel = formatTaskLabel(topbarTask.label, topbarTask.status, locale)
+  const topbarStatusText = topbarTask.status === "idle" ? copy.toolbar.ready : topbarTaskDisplayLabel
+  const topbarStatusClass = topbarTone === "error"
     ? "topbar-status is-failed"
-    : latestTask.status === "success"
+    : topbarTone === "success"
       ? "topbar-status is-success"
       : "topbar-status"
-  const compactStatusClass = latestTask.status === "error"
+  const topbarStatusClassName = topbarWarmFlash ? `${topbarStatusClass} is-warm` : topbarStatusClass
+  const compactStatusClass = topbarTone === "error"
     ? "topbar-status-compact is-failed"
-    : latestTask.status === "success"
+    : topbarTone === "success"
       ? "topbar-status-compact is-success"
       : "topbar-status-compact"
-  const topbarSurprise = locale === "zh"
-    ? "往下滑一点，桥会悄悄给你让出舞台。"
-    : "Scroll a little further. The bridge makes room for the next move."
+  const compactStatusClassName = topbarWarmFlash ? `${compactStatusClass} is-warm` : compactStatusClass
+  const topbarSurprise = topbarTone === "error"
+    ? (locale === "zh" ? "目标还在前面，桥先替你记住这次偏差。" : "The goal is still ahead. The bridge will hold onto this deviation for the next try.")
+    : locale === "zh"
+      ? "再往下滑一点，桥会退到幕后，让目标与动作在这里彼此匹配。"
+      : "Scroll a little further. The bridge steps aside so intent and target can meet here."
+  const topbarSurpriseClass = topbarTone === "error"
+    ? "topbar-surprise-chip is-failed"
+    : "topbar-surprise-chip"
+  const topbarSurpriseClassName = topbarWarmFlash ? `${topbarSurpriseClass} is-warm` : topbarSurpriseClass
+  const brandLogoClassName = topbarWarmFlash ? "brand-logo is-warm" : "brand-logo"
   const topbarStyle = {
     ["--topbar-progress" as string]: topbarProgress.toString()
   } as CSSProperties
   const windowsDraftTarget = windowsHost.trim()
     ? `${windowsUser.trim() ? `${windowsUser.trim()}@` : ""}${windowsHost.trim()}:${windowsPort.trim() || "22"}`
     : copy.inspector.noneDescription
-  const androidDraftTarget = connectEndpoint.trim() || pairEndpoint.trim() || copy.inspector.noneDescription
+  const androidDraftTarget = androidTargetMode === "usb"
+    ? (selectedAndroidUsbSerial.trim() || copy.inspector.noneDescription)
+    : (connectEndpoint.trim() || pairEndpoint.trim() || copy.inspector.noneDescription)
   const currentTargetLabel = selectedProfileSummary?.target
     ?? (activeSection === "windows"
       ? windowsDraftTarget
@@ -329,6 +263,46 @@ export default function App(): JSX.Element {
         { label: copy.overview.cards.registryFile, value: dashboard.environment.registryPath }
       ]
     : []
+
+  useEffect(() => {
+    const preferredUsbDevice = androidUsbDevices.find((device) => device.state === "device") ?? androidUsbDevices[0] ?? null
+    if (!preferredUsbDevice) {
+      if (selectedAndroidUsbSerial) {
+        setSelectedAndroidUsbSerial("")
+      }
+      return
+    }
+
+    if (!selectedAndroidUsbSerial || !androidUsbDevices.some((device) => device.serial === selectedAndroidUsbSerial)) {
+      setSelectedAndroidUsbSerial(preferredUsbDevice.serial)
+    }
+  }, [androidUsbDevices, selectedAndroidUsbSerial])
+
+  useEffect(() => {
+    if (!androidDiscovery) {
+      return
+    }
+
+    const pairService = androidDiscovery.services.find((service) => service.serviceType.includes("pair"))
+    const connectService = androidDiscovery.services.find((service) => service.serviceType.includes("connect"))
+
+    if (pairService && !pairEndpoint.trim()) {
+      setPairEndpoint(pairService.address)
+    }
+
+    if (connectService && !connectEndpoint.trim()) {
+      setConnectEndpoint(connectService.address)
+    }
+
+    if (connectService) {
+      setAndroidQrStatus(copy.android.qrDetected)
+      return
+    }
+
+    if (!androidQrStatus) {
+      setAndroidQrStatus(copy.android.qrReady)
+    }
+  }, [androidDiscovery, pairEndpoint, connectEndpoint, androidQrStatus, copy.android.qrDetected, copy.android.qrReady])
 
   function setPlatformSelection(platform: ProfilePlatform, name: string): void {
     setSelectedProfiles((current) => ({ ...current, [platform]: name }))
@@ -355,7 +329,13 @@ export default function App(): JSX.Element {
 
     if (detail.platform === "android") {
       setAndroidProfileName(detail.name)
-      setConnectEndpoint(detail.hostname)
+      if (detail.hostname.includes(":")) {
+        setAndroidTargetMode("wireless")
+        setConnectEndpoint(detail.hostname)
+      } else {
+        setAndroidTargetMode("usb")
+        setSelectedAndroidUsbSerial(detail.hostname)
+      }
       setAndroidDescription(detail.description ?? "")
       setActiveSection("android")
     }
@@ -515,74 +495,146 @@ export default function App(): JSX.Element {
     await runTask(copy.android.refreshing, () => window.bridgeDesktop.discoverAndroid(adbPath || undefined), (result) => {
       setAndroidDiscovery(result)
       setAdbPath(result.adbPath)
-      if (result.devices[0]?.serial && !connectEndpoint) {
-        setConnectEndpoint(result.devices[0].serial)
-      }
     })
   }
 
-  async function handleAndroidScanQr(): Promise<void> {
-    const image = await window.bridgeDesktop.pickQrImage()
-    if (!image) {
-      return
-    }
+  async function refreshAndroidDiscoverySilently(): Promise<AndroidDiscoverySnapshot> {
+    const result = await window.bridgeDesktop.discoverAndroid(adbPath || undefined)
+    setAndroidDiscovery(result)
+    setAdbPath(result.adbPath)
+    return result
+  }
 
-    try {
-      const rawText = await decodeQrImage(image)
-      let parsed = parseAndroidQrPayload(rawText)
-      let latestDiscovery = androidDiscovery
-
-      if (!latestDiscovery || (!parsed.pairEndpoint && parsed.serviceName)) {
-        latestDiscovery = await window.bridgeDesktop.discoverAndroid(adbPath || undefined)
-        setAndroidDiscovery(latestDiscovery)
-        setAdbPath(latestDiscovery.adbPath)
+  async function waitForAndroidConnectEndpoint(maxAttempts = 6, delayMs = 1500): Promise<string | null> {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const snapshot = await refreshAndroidDiscoverySilently()
+      const connectService = snapshot.services.find((service) => service.serviceType.includes("connect"))
+      if (connectService?.address) {
+        setConnectEndpoint(connectService.address)
+        setAndroidQrStatus(copy.android.qrDetected)
+        return connectService.address
       }
 
-      parsed = resolveQrPayload(parsed, latestDiscovery)
-      setAndroidQrStatus(image.name)
-      setPairCode(parsed.password ?? "")
-      setPairEndpoint(parsed.pairEndpoint ?? "")
-      setConnectEndpoint(parsed.connectEndpoint ?? connectEndpoint)
-      appendLog(copy.android.qrImported, parsed)
-    } catch (error) {
-      const message = error instanceof Error && error.message === "qr-unavailable"
-        ? copy.android.qrUnavailable
-        : copy.android.qrFailed
-      setAndroidQrStatus(message)
-      appendLog(copy.android.scanQr, message)
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, delayMs))
+      }
+    }
+
+    return null
+  }
+
+  async function handleAndroidPrepareWireless(): Promise<void> {
+    setAndroidTargetMode("wireless")
+    setAndroidQrStatus(copy.android.qrReady)
+    appendLog(copy.android.showQr, copy.android.qrReady)
+    if (!androidDiscovery) {
+      await handleAndroidDiscover()
     }
   }
 
   async function handleAndroidPair(): Promise<void> {
-    await runTask(copy.android.pairing, () => window.bridgeDesktop.pairAndroid(pairEndpoint, pairCode, adbPath || undefined))
-    await handleAndroidDiscover()
+    setAndroidTargetMode("wireless")
+    setLatestTask({ label: copy.android.pairing, status: "running" })
+    try {
+      const pairResult = await window.bridgeDesktop.pairAndroid(pairEndpoint, pairCode, adbPath || undefined)
+      if (isFailedResult(pairResult)) {
+        appendLog(`${copy.android.pairing} failed`, pairResult)
+        setLatestTask({ label: copy.android.pairing, status: "error" })
+        return
+      }
+
+      appendLog(copy.android.pairing, pairResult)
+      setAndroidQrStatus(copy.android.qrPaired)
+      setLatestTask({ label: copy.android.resolvingEndpoint, status: "running" })
+
+      const nextConnectEndpoint = await waitForAndroidConnectEndpoint()
+      if (!nextConnectEndpoint) {
+        const failure = {
+          success: false,
+          exitCode: 1,
+          stdout: pairResult.stdout,
+          stderr: copy.android.connectEndpointMissing
+        }
+        appendLog(`${copy.android.resolvingEndpoint} failed`, failure)
+        setLatestTask({ label: copy.android.resolvingEndpoint, status: "error" })
+        return
+      }
+
+      setLatestTask({ label: copy.android.connecting, status: "running" })
+      const connectResult = await window.bridgeDesktop.connectAndroid(nextConnectEndpoint, adbPath || undefined)
+      if (isFailedResult(connectResult)) {
+        appendLog(`${copy.android.connecting} failed`, connectResult)
+        setLatestTask({ label: copy.android.connecting, status: "error" })
+        await refreshAndroidDiscoverySilently()
+        return
+      }
+
+      const successResult = {
+        ...connectResult,
+        stdout: [pairResult.stdout.trim(), connectResult.stdout.trim()].filter(Boolean).join("\n")
+      }
+      appendLog(copy.android.connecting, successResult)
+      setAndroidQrStatus(copy.android.qrConnected)
+      setLatestTask({ label: copy.android.connecting, status: "success" })
+    } catch (error) {
+      appendLog(`${copy.android.pairing} failed`, error instanceof Error ? error.message : String(error))
+      setLatestTask({ label: copy.android.pairing, status: "error" })
+    }
+    await refreshAndroidDiscoverySilently()
   }
 
   async function handleAndroidConnect(): Promise<void> {
+    setAndroidTargetMode("wireless")
     await runTask(copy.android.connecting, () => window.bridgeDesktop.connectAndroid(connectEndpoint, adbPath || undefined))
-    await handleAndroidDiscover()
+    await refreshAndroidDiscoverySilently()
   }
 
   async function handleAndroidDisconnect(): Promise<void> {
     await runTask(copy.android.disconnecting, () => window.bridgeDesktop.disconnectAndroid(undefined, adbPath || undefined))
-    await handleAndroidDiscover()
+    await refreshAndroidDiscoverySilently()
   }
 
   async function handleAndroidReconnect(profile: ProfileSummary): Promise<void> {
     setPlatformSelection("android", profile.name)
-    setConnectEndpoint(profile.target)
+    if (profile.target.includes(":")) {
+      setAndroidTargetMode("wireless")
+      setConnectEndpoint(profile.target)
+      setAndroidProfileName(profile.name)
+      await runTask(copy.android.connecting, () => window.bridgeDesktop.connectAndroid(profile.target, adbPath || undefined))
+      await refreshAndroidDiscoverySilently()
+      return
+    }
+
+    setAndroidTargetMode("usb")
+    setSelectedAndroidUsbSerial(profile.target)
     setAndroidProfileName(profile.name)
-    await runTask(copy.android.connecting, () => window.bridgeDesktop.connectAndroid(profile.target, adbPath || undefined))
-    await handleAndroidDiscover()
+    await runTask(copy.android.reconnecting, async () => {
+      const snapshot = await refreshAndroidDiscoverySilently()
+      const device = snapshot.devices.find((entry) => entry.serial === profile.target)
+      return device
+        ? { success: true, serial: profile.target, state: device.state }
+        : { success: false, serial: profile.target, message: copy.android.usbMissing }
+    })
   }
 
   async function handleAndroidSave(): Promise<void> {
-    const targetSerial = connectEndpoint || androidDiscovery?.devices[0]?.serial || ""
+    if (!canSaveAndroid) {
+      return
+    }
+    const targetSerial = androidSaveTarget
     const payload: AndroidProfileInput = { name: androidProfileName, serial: targetSerial, description: androidDescription }
     await runTask(copy.android.saving, () => window.bridgeDesktop.saveAndroidProfile(payload), async (profile) => {
       setPlatformSelection("android", profile.name)
       await refreshDashboard()
     })
+  }
+
+  function handleSelectAndroidUsbDevice(device: AndroidDiscoverySnapshot["devices"][number]): void {
+    setSelectedAndroidUsbSerial(device.serial)
+    setAndroidTargetMode("usb")
+    if (!androidProfileName.trim() || androidProfileName === "pixel-air") {
+      setAndroidProfileName(normalizeProfileName(device.details.model ?? device.serial))
+    }
   }
 
   async function handleWindowsDiscover(): Promise<void> {
@@ -708,8 +760,8 @@ export default function App(): JSX.Element {
       <header className={isTopbarSplit ? "topbar is-split" : "topbar"} style={topbarStyle}>
         <div className="topbar-brand-shell">
           <div className="topbar-brand">
-            <div className="brand-logo">CB</div>
-            <div className={compactStatusClass}>
+            <div className={brandLogoClassName}>CB</div>
+            <div className={compactStatusClassName}>
               <span className="status-badge" />
               <span className="topbar-status-text">{topbarStatusText}</span>
             </div>
@@ -717,7 +769,7 @@ export default function App(): JSX.Element {
         </div>
 
         <div className="topbar-middle">
-          <div className={topbarStatusClass}>
+          <div className={topbarStatusClassName}>
             <span className="status-badge" />
             <span className="topbar-brand-title">{copy.brandTitle}</span>
             <span className="topbar-status-divider" aria-hidden="true" />
@@ -726,7 +778,7 @@ export default function App(): JSX.Element {
             </span>
           </div>
           <div className="topbar-surprise" aria-hidden={!isTopbarSplit}>
-            <span>{topbarSurprise}</span>
+            <span className={topbarSurpriseClassName}>{topbarSurprise}</span>
           </div>
         </div>
 
@@ -805,7 +857,7 @@ export default function App(): JSX.Element {
                   <div className="header-copy"><h3>{copy.android.workflowTitle}</h3>{androidQrStatus && <p className="section-note">{androidQrStatus}</p>}</div>
                   <div className="header-actions">
                     <button className="ghost-button" onClick={() => void handleAndroidDiscover()}>{copy.android.discover}</button>
-                    <button className="toolbar-primary" onClick={() => void handleAndroidScanQr()}>{copy.android.scanQr}</button>
+                    <button className="toolbar-primary" onClick={() => void handleAndroidPrepareWireless()}>{copy.android.showQr}</button>
                   </div>
                 </div>
 
@@ -822,36 +874,40 @@ export default function App(): JSX.Element {
                   </div>
                 </div>
 
-                <div className="task-grid task-grid-2">
-                  <section className="panel-section">
+                <div className="task-grid task-grid-2 android-task-grid">
+                  <section className="panel-section android-wireless-section">
+                    <div className="subsection-head">
+                      <h4>{copy.android.wirelessTitle}</h4>
+                    </div>
+                    <div className="qr-shell">
+                      <div className="qr-preview is-empty">
+                        <p>{copy.android.qrIdle}</p>
+                      </div>
+                      <div className="qr-meta">
+                        <strong>{androidQrStatus || copy.android.qrReady}</strong>
+                        <span>{connectEndpoint || pairEndpoint || copy.android.qrEmptyHint}</span>
+                      </div>
+                    </div>
                     <div className="field-grid field-grid-2">
                       <label><span>{copy.android.adbPath}</span><input value={adbPath} onChange={(event) => setAdbPath(event.target.value)} placeholder={copy.android.adbPathPlaceholder} /></label>
                       <label><span>{copy.android.pairEndpoint}</span><input value={pairEndpoint} onChange={(event) => setPairEndpoint(event.target.value)} placeholder={copy.android.pairEndpointPlaceholder} /></label>
                       <label><span>{copy.android.pairCode}</span><input value={pairCode} onChange={(event) => setPairCode(event.target.value)} placeholder={copy.android.pairCodePlaceholder} /></label>
                       <label><span>{copy.android.connectEndpoint}</span><input value={connectEndpoint} onChange={(event) => setConnectEndpoint(event.target.value)} placeholder={copy.android.connectEndpointPlaceholder} /></label>
                     </div>
-                    <div className="action-flow">
-                      <div className="action-step">
-                        <div className="action-step-copy"><strong>{copy.android.pair}</strong><p>{copy.android.pairHint}</p></div>
-                        <button className="ghost-button" disabled={!canPairAndroid} onClick={() => void handleAndroidPair()}>{copy.android.pair}</button>
-                      </div>
-                      <div className="action-step action-step-accent">
-                        <div className="action-step-copy"><strong>{copy.android.connect}</strong><p>{copy.android.connectHint}</p></div>
-                        <button className="primary-button" disabled={!canConnectAndroid} onClick={() => void handleAndroidConnect()}>{copy.android.connect}</button>
-                      </div>
-                      <div className="action-step action-step-muted">
-                        <div className="action-step-copy"><strong>{copy.android.disconnect}</strong><p>{hasActiveAndroidSession ? copy.android.disconnectHint : copy.android.sessionIdle}</p></div>
-                        <button className="ghost-button subtle-button" disabled={!hasActiveAndroidSession} onClick={() => void handleAndroidDisconnect()}>{copy.android.disconnect}</button>
-                      </div>
+                    <div className="button-row form-tail">
+                      <button className="ghost-button" disabled={!canPairAndroid} onClick={() => void handleAndroidPair()}>{copy.android.pair}</button>
+                      <button className="primary-button" disabled={!canConnectAndroid} onClick={() => void handleAndroidConnect()}>{copy.android.connect}</button>
+                      <button className="ghost-button subtle-button" disabled={!hasActiveAndroidSession} onClick={() => void handleAndroidDisconnect()}>{copy.android.disconnect}</button>
                     </div>
-                  </section>
-
-                  <section className="panel-section">
                     <div className="stack-card">
                       <div className="stack-card-head"><h3>{copy.android.mdnsServices}</h3></div>
                       <div className="stack-list">
                         {androidServices.map((service) => (
-                          <button key={`${service.instanceName}-${service.address}`} className="stack-item" onClick={() => service.serviceType.includes("pair") ? setPairEndpoint(service.address) : setConnectEndpoint(service.address)}>
+                          <button
+                            key={`${service.instanceName}-${service.address}`}
+                            className="stack-item"
+                            onClick={() => service.serviceType.includes("pair") ? setPairEndpoint(service.address) : setConnectEndpoint(service.address)}
+                          >
                             <strong>{service.serviceType}</strong>
                             <span>{service.address || service.instanceName}</span>
                           </button>
@@ -859,16 +915,40 @@ export default function App(): JSX.Element {
                         {androidServices.length === 0 && <p className="empty-copy">{copy.android.noServices}</p>}
                       </div>
                     </div>
+                  </section>
+
+                  <section className="panel-section android-usb-section">
+                    <div className="subsection-head">
+                      <h4>{copy.android.usbTitle}</h4>
+                    </div>
                     <div className="stack-card">
-                      <div className="stack-card-head"><h3>{copy.android.connectedDevices}</h3></div>
                       <div className="stack-list">
-                        {androidDevices.map((device) => (
-                          <button key={device.serial} className="stack-item" onClick={() => setConnectEndpoint(device.serial)}>
+                        {androidUsbDevices.map((device) => (
+                          <button
+                            key={device.serial}
+                            className={device.serial === selectedAndroidUsbSerial ? "stack-item active" : "stack-item"}
+                            onClick={() => handleSelectAndroidUsbDevice(device)}
+                          >
                             <strong>{device.serial}</strong>
-                            <span>{device.state}</span>
+                            <span>{device.details.model ?? device.details.product ?? device.state}</span>
+                            <small>{device.state}</small>
                           </button>
                         ))}
-                        {androidDevices.length === 0 && <p className="empty-copy">{copy.android.noDevices}</p>}
+                        {androidUsbDevices.length === 0 && <p className="empty-copy">{copy.android.noDevices}</p>}
+                      </div>
+                    </div>
+                    <div className="summary-block">
+                      <div className="summary-row">
+                        <span>{copy.android.usbSerial}</span>
+                        <strong>{selectedAndroidUsbDevice?.serial ?? copy.inspector.none}</strong>
+                      </div>
+                      <div className="summary-row">
+                        <span>{copy.android.usbModel}</span>
+                        <strong>{selectedAndroidUsbDevice?.details.model ?? selectedAndroidUsbDevice?.details.product ?? copy.inspector.none}</strong>
+                      </div>
+                      <div className="summary-row">
+                        <span>{copy.android.usbState}</span>
+                        <strong>{selectedAndroidUsbDevice?.state ?? copy.inspector.none}</strong>
                       </div>
                     </div>
                   </section>
@@ -877,11 +957,21 @@ export default function App(): JSX.Element {
 
               <div className="panel-card span-2">
                 <div className="card-head"><h3>{copy.android.saveTitle}</h3></div>
+                <div className="target-mode-row">
+                  <button className={androidTargetMode === "wireless" ? "segmented-option active" : "segmented-option"} onClick={() => setAndroidTargetMode("wireless")}>{copy.android.targetWireless}</button>
+                  <button className={androidTargetMode === "usb" ? "segmented-option active" : "segmented-option"} onClick={() => setAndroidTargetMode("usb")}>{copy.android.targetUsb}</button>
+                </div>
+                <div className="summary-block target-summary">
+                  <div className="summary-row">
+                    <span>{copy.android.targetValue}</span>
+                    <strong>{androidSaveTarget || copy.android.noTargetSelected}</strong>
+                  </div>
+                </div>
                 <div className="field-grid field-grid-2">
                   <label><span>{copy.android.profileName}</span><input value={androidProfileName} onChange={(event) => setAndroidProfileName(event.target.value)} /></label>
                   <label><span>{copy.android.description}</span><input value={androidDescription} onChange={(event) => setAndroidDescription(event.target.value)} placeholder={copy.android.descriptionPlaceholder} /></label>
                 </div>
-                <div className="button-row"><button className="primary-button" onClick={() => void handleAndroidSave()}>{copy.android.saveProfile}</button></div>
+                <div className="button-row"><button className="primary-button" disabled={!canSaveAndroid} onClick={() => void handleAndroidSave()}>{copy.android.saveProfile}</button></div>
               </div>
             </section>
           )}

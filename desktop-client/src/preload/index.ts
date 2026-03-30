@@ -59,8 +59,7 @@ const api: RendererApi = {
     return result
   },
   discoverWindows: (query?: string) => ipcRenderer.invoke("windows:discover", query),
-  pickFile: () => ipcRenderer.invoke("dialog:pickFile"),
-  pickQrImage: () => ipcRenderer.invoke("dialog:pickQrImage")
+  pickFile: () => ipcRenderer.invoke("dialog:pickFile")
 }
 
 contextBridge.exposeInMainWorld("bridgeDesktop", api)

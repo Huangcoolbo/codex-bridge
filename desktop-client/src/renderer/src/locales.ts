@@ -50,21 +50,38 @@ type Copy = {
     workflowTitle: string
     workflowHint: string
     discover: string
-    scanQr: string
-    qrImported: string
-    qrUnavailable: string
+    showQr: string
+    qrReady: string
+    qrWaiting: string
+    qrDetected: string
     qrFailed: string
+    connectEndpointMissing: string
+    qrPaired: string
+    qrConnected: string
+    qrIdle: string
+    qrEmptyHint: string
+    qrPreviewAlt: string
     adbPath: string
     adbPathPlaceholder: string
+    pairService: string
+    pairServicePlaceholder: string
     pairEndpoint: string
     pairEndpointPlaceholder: string
     pairCode: string
     pairCodePlaceholder: string
     connectEndpoint: string
     connectEndpointPlaceholder: string
+    wirelessTitle: string
+    wirelessHint: string
+    usbTitle: string
+    usbHint: string
+    usbSerial: string
+    usbModel: string
+    usbState: string
     pair: string
     connect: string
     disconnect: string
+    resolvingEndpoint: string
     pairHint: string
     connectHint: string
     disconnectHint: string
@@ -77,6 +94,10 @@ type Copy = {
     mdnsServices: string
     noServices: string
     saveTitle: string
+    targetWireless: string
+    targetUsb: string
+    targetValue: string
+    noTargetSelected: string
     profileName: string
     description: string
     descriptionPlaceholder: string
@@ -85,6 +106,8 @@ type Copy = {
     pairing: string
     connecting: string
     disconnecting: string
+    reconnecting: string
+    usbMissing: string
     saving: string
   }
   windows: {
@@ -208,24 +231,41 @@ export const COPY: Record<Locale, Copy> = {
       focusDescription: "Open a workflow to discover, fill, and reconnect faster."
     },
     android: {
-      workflowTitle: "Android Wireless",
-      workflowHint: "Discover, scan, connect.",
+      workflowTitle: "Android",
+      workflowHint: "Open wireless debugging on the phone, enter the pairing endpoint and code here, then pair or save USB.",
       discover: "Discover",
-      scanQr: "Scan QR",
-      qrImported: "QR imported",
-      qrUnavailable: "QR scanning is unavailable in this runtime.",
-      qrFailed: "QR could not be decoded.",
+      showQr: "Use Phone Pairing Code",
+      qrReady: "Read the pairing endpoint and code from the phone",
+      qrWaiting: "Waiting for wireless service",
+      qrDetected: "Wireless connect endpoint found",
+      qrFailed: "Wireless pairing setup failed.",
+      connectEndpointMissing: "Pairing succeeded, but no wireless connect endpoint was discovered yet.",
+      qrPaired: "Paired successfully. Looking for the wireless connect endpoint",
+      qrConnected: "Wireless debugging is connected",
+      qrIdle: "On the phone: Wireless debugging -> Pair device with pairing code. Enter the pairing endpoint and code on the right.",
+      qrEmptyHint: "Waiting for manual pairing",
+      qrPreviewAlt: "Android Wi-Fi pairing QR code",
       adbPath: "ADB",
       adbPathPlaceholder: "adb.exe path",
+      pairService: "Pair Service",
+      pairServicePlaceholder: "Generated pairing service name",
       pairEndpoint: "Pair Endpoint",
       pairEndpointPlaceholder: "192.168.x.x:pair-port",
       pairCode: "Pair Code",
       pairCodePlaceholder: "Pair secret",
       connectEndpoint: "Connect Endpoint",
       connectEndpointPlaceholder: "192.168.x.x:connect-port",
+      wirelessTitle: "Wireless Pairing",
+      wirelessHint: "Use the pairing endpoint and pairing code shown on the phone. After pairing, the connect endpoint can be auto-filled here.",
+      usbTitle: "USB Devices",
+      usbHint: "Use the detected USB device serial directly as the Android target.",
+      usbSerial: "USB Serial",
+      usbModel: "Device Model",
+      usbState: "Connection State",
       pair: "Pair",
       connect: "Connect",
       disconnect: "Disconnect",
+      resolvingEndpoint: "Finding connect endpoint",
       pairHint: "Fill from QR or mDNS.",
       connectHint: "Connect after pairing.",
       disconnectHint: "End the active session.",
@@ -233,11 +273,15 @@ export const COPY: Record<Locale, Copy> = {
       recentTitle: "Recent Devices",
       noRecent: "No recent devices",
       reconnect: "Reconnect",
-      connectedDevices: "Connected Devices",
+      connectedDevices: "USB Devices",
       noDevices: "No devices",
-      mdnsServices: "mDNS Services",
+      mdnsServices: "Wireless Services",
       noServices: "No services",
       saveTitle: "Save Device",
+      targetWireless: "Wireless",
+      targetUsb: "USB",
+      targetValue: "Selected Target",
+      noTargetSelected: "Choose a wireless or USB target",
       profileName: "Name",
       description: "Note",
       descriptionPlaceholder: "Optional",
@@ -246,6 +290,8 @@ export const COPY: Record<Locale, Copy> = {
       pairing: "Pairing",
       connecting: "Connecting",
       disconnecting: "Disconnecting",
+      reconnecting: "Reconnecting",
+      usbMissing: "USB device is not connected",
       saving: "Saving"
     },
     windows: {
@@ -367,24 +413,41 @@ export const COPY: Record<Locale, Copy> = {
       focusDescription: "进入任务流后，优先发现、自动填充和快速重连。"
     },
     android: {
-      workflowTitle: "Android 无线连接",
-      workflowHint: "发现、扫码、连接。",
+      workflowTitle: "Android",
+      workflowHint: "在手机无线调试里查看配对地址和配对码，在这里输入并配对；USB 设备可直接保存。",
       discover: "发现设备",
-      scanQr: "扫码导入",
-      qrImported: "已导入二维码",
-      qrUnavailable: "当前运行环境不支持二维码识别。",
-      qrFailed: "未识别到二维码内容。",
+      showQr: "使用手机配对码",
+      qrReady: "请在手机上查看配对地址和配对码",
+      qrWaiting: "等待无线服务出现",
+      qrDetected: "已发现无线连接地址",
+      qrFailed: "无线配对准备失败。",
+      connectEndpointMissing: "配对成功，但暂时还没有发现无线连接地址。",
+      qrPaired: "配对成功，正在查找无线连接地址",
+      qrConnected: "无线调试已连接",
+      qrIdle: "在手机里打开 无线调试 -> 使用配对码配对设备，把配对地址和配对码填到右侧。",
+      qrEmptyHint: "等待手动配对",
+      qrPreviewAlt: "Android 无线调试配对二维码",
       adbPath: "ADB",
       adbPathPlaceholder: "adb.exe 路径",
+      pairService: "配对服务名",
+      pairServicePlaceholder: "自动生成的配对服务名",
       pairEndpoint: "配对地址",
       pairEndpointPlaceholder: "192.168.x.x:配对端口",
       pairCode: "配对码",
       pairCodePlaceholder: "配对密钥",
       connectEndpoint: "连接地址",
       connectEndpointPlaceholder: "192.168.x.x:连接端口",
+      wirelessTitle: "无线配对",
+      wirelessHint: "直接使用手机显示的配对地址和配对码。配对完成后，客户端会在这里自动补全连接地址。",
+      usbTitle: "USB 设备",
+      usbHint: "已接入的 USB 调试设备会直接显示在这里，可直接保存为 Android 目标。",
+      usbSerial: "USB 序列号",
+      usbModel: "设备型号",
+      usbState: "连接状态",
       pair: "配对",
       connect: "连接",
       disconnect: "断开",
+      resolvingEndpoint: "查找连接地址中",
       pairHint: "优先用二维码或 mDNS 自动填充。",
       connectHint: "配对后直接连接。",
       disconnectHint: "结束当前会话。",
@@ -392,11 +455,15 @@ export const COPY: Record<Locale, Copy> = {
       recentTitle: "最近设备",
       noRecent: "暂无最近设备",
       reconnect: "重连",
-      connectedDevices: "已连接设备",
+      connectedDevices: "USB 设备",
       noDevices: "暂无设备",
-      mdnsServices: "mDNS 服务",
+      mdnsServices: "无线服务",
       noServices: "暂无服务",
       saveTitle: "保存设备",
+      targetWireless: "无线目标",
+      targetUsb: "USB 设备",
+      targetValue: "当前目标",
+      noTargetSelected: "请选择无线目标或 USB 设备",
       profileName: "名称",
       description: "备注",
       descriptionPlaceholder: "可选",
@@ -405,6 +472,8 @@ export const COPY: Record<Locale, Copy> = {
       pairing: "配对中",
       connecting: "连接中",
       disconnecting: "断开中",
+      reconnecting: "重连中",
+      usbMissing: "USB 设备未连接",
       saving: "保存中"
     },
     windows: {

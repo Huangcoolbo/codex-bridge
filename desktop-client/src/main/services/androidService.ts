@@ -31,6 +31,24 @@ function execCommand(command: string, args: string[], input?: string): Promise<C
   })
 }
 
+function normalizeAdbOutcome(result: CommandEnvelope, failurePatterns: RegExp[]): CommandEnvelope {
+  if (!result.success) {
+    return result
+  }
+
+  const text = `${result.stdout}\n${result.stderr}`.toLowerCase()
+  const failed = failurePatterns.some((pattern) => pattern.test(text))
+  if (!failed) {
+    return result
+  }
+
+  return {
+    ...result,
+    success: false,
+    exitCode: result.exitCode === 0 ? 1 : result.exitCode
+  }
+}
+
 export function resolveAdbPath(explicitPath?: string): string {
   if (explicitPath?.trim()) {
     return explicitPath.trim()
@@ -101,11 +119,15 @@ export async function discoverAndroid(adbPath?: string): Promise<AndroidDiscover
 }
 
 export function pairAndroid(endpoint: string, code: string, adbPath?: string): Promise<CommandEnvelope> {
-  return execCommand(resolveAdbPath(adbPath), ["pair", endpoint], code + "\n")
+  return execCommand(resolveAdbPath(adbPath), ["pair", endpoint], code + "\n").then((result) =>
+    normalizeAdbOutcome(result, [/failed:/, /error:/, /unable to/i, /cannot pair/i])
+  )
 }
 
 export function connectAndroid(endpoint: string, adbPath?: string): Promise<CommandEnvelope> {
-  return execCommand(resolveAdbPath(adbPath), ["connect", endpoint])
+  return execCommand(resolveAdbPath(adbPath), ["connect", endpoint]).then((result) =>
+    normalizeAdbOutcome(result, [/cannot connect to/, /failed to connect to/, /unable to connect to/, /error:/, /failed:/])
+  )
 }
 
 export function disconnectAndroid(endpoint?: string, adbPath?: string): Promise<CommandEnvelope> {

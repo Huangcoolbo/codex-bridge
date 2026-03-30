@@ -1,12 +1,8 @@
 import { dialog, ipcMain, BrowserWindow } from "electron"
-import { extname } from "node:path"
-import { readFileSync } from "node:fs"
-
 import type {
   AndroidProfileInput,
   CommandExecutionRequest,
   CommandRunRequest,
-  PickedImagePayload,
   WindowsProfileInput
 } from "@shared/contracts"
 import { discoverAndroid, disconnectAndroid, pairAndroid, connectAndroid } from "./services/androidService"
@@ -28,39 +24,6 @@ import {
   saveWindowsProfile
 } from "./services/bridgeService"
 import { clearCurrentTarget, setCurrentTarget } from "./services/sessionService"
-
-function mimeTypeForExtension(path: string): string {
-  switch (extname(path).toLowerCase()) {
-    case ".jpg":
-    case ".jpeg":
-      return "image/jpeg"
-    case ".webp":
-      return "image/webp"
-    case ".gif":
-      return "image/gif"
-    default:
-      return "image/png"
-  }
-}
-
-async function pickImagePayload(window: BrowserWindow): Promise<PickedImagePayload | null> {
-  const result = await dialog.showOpenDialog(window, {
-    title: "Choose QR Image",
-    properties: ["openFile"],
-    filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }]
-  })
-
-  if (result.canceled || result.filePaths.length === 0) {
-    return null
-  }
-
-  const filePath = result.filePaths[0]
-  const buffer = readFileSync(filePath)
-  return {
-    name: filePath.split(/[\\/]/).pop() ?? "qr-image",
-    dataUrl: `data:${mimeTypeForExtension(filePath)};base64,${buffer.toString("base64")}`
-  }
-}
 
 export function registerIpcHandlers(window: BrowserWindow): void {
   ipcMain.handle("dashboard:load", async () => loadDashboard())
@@ -97,5 +60,4 @@ export function registerIpcHandlers(window: BrowserWindow): void {
     }
     return result.filePaths[0]
   })
-  ipcMain.handle("dialog:pickQrImage", async () => pickImagePayload(window))
 }

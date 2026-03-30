@@ -118,22 +118,6 @@ export interface AndroidProfileInput {
   description?: string
 }
 
-export interface PickedImagePayload {
-  name: string
-  dataUrl: string
-}
-
-export interface AndroidQrPayload {
-  rawText: string
-  serviceName?: string | null
-  password?: string | null
-  host?: string | null
-  pairingPort?: number | null
-  connectPort?: number | null
-  pairEndpoint?: string | null
-  connectEndpoint?: string | null
-}
-
 export interface WindowsDiscoveryCandidate {
   id: string
   label: string
@@ -173,5 +157,4 @@ export interface RendererApi {
   executeCommand: (input: CommandExecutionRequest) => Promise<CommandExecutionResult>
   discoverWindows: (query?: string) => Promise<WindowsDiscoverySnapshot>
   pickFile: () => Promise<string | null>
-  pickQrImage: () => Promise<PickedImagePayload | null>
 }
