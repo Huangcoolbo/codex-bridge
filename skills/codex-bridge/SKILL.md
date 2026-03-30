@@ -57,6 +57,7 @@ Do not stop at any of these:
 
 - a local mock gateway with no real provider behind it
 - a desktop client whose gateway is secondary or optional afterthought plumbing
+- a desktop client that can perform important actions which the gateway cannot perform
 - a gateway that only shells locally and calls that "remote execution"
 - a project that only lists or reads state but cannot represent controlled write capability
 - a project that has endpoint names and JSON shapes but no real transport-backed path
@@ -72,6 +73,7 @@ A minimal runnable implementation must include all of the following:
 3. structured success / failure results
 4. explicit state inspection before larger actions
 5. at least one controlled mutation path in the architecture
+6. if a client exists, its important actions must also be available through the gateway
 ```
 
 ### Acceptable Real Provider-Backed Minimal Paths
@@ -131,6 +133,92 @@ The mutation path may be:
 
 But it must exist as a real architectural path, not as a TODO.
 
+## Client Actions Must Become Gateway Actions
+
+If the project has a desktop client or any human-facing control surface, important operations must not live only in the client.
+
+The bridge should follow this rule:
+
+```text
+client action
+  ->
+gateway action
+  ->
+bridge/provider flow
+```
+
+Not this:
+
+```text
+client action
+  ->
+private client-only logic
+```
+
+The gateway must be the primary execution surface.
+
+The client may call the gateway, or share the same underlying service layer, but it must not own unique bridge capabilities that agents cannot reach.
+
+## Minimum Gateway Surface
+
+Do not hardcode one exact route naming scheme.
+
+But a real `codex-bridge` project should expose gateway actions equivalent to the following.
+
+### Windows / Remote Host Management
+
+At minimum, the gateway should expose actions equivalent to:
+
+- add remote host
+- list remote hosts
+- read one remote host
+- update remote host
+- delete remote host
+- get current target
+- set current target
+- clear current target
+- probe target
+- execute action on target
+- read last result or equivalent execution state
+
+The important point is not the exact URL shape.
+
+The important point is:
+
+```text
+adding a remote host
+  ->
+must be a gateway action
+  ->
+not only a client form behavior
+```
+
+### Android / Device Management
+
+At minimum, the gateway should expose actions equivalent to:
+
+- list devices
+- read one device info snapshot
+- get current device
+- set current device
+- clear current device
+- pair wireless device if wireless is supported
+- connect wireless device if wireless is supported
+- list files
+- read file
+- pull file
+- controlled write action such as mkdir / write / push
+
+### Health And Session
+
+At minimum, the gateway should expose actions equivalent to:
+
+- health
+- current selection state
+- result state for the last important action
+
+If the project contains a client operation that materially changes bridge state, and the agent cannot do the same thing through the gateway, treat the implementation as incomplete.
+
 ## What Counts As Incomplete
 
 Treat the implementation as incomplete if any of these are true:
@@ -142,6 +230,9 @@ Treat the implementation as incomplete if any of these are true:
 - the project can run locally but cannot actually probe or act on a real remote host or device
 - the project only implements generic JSON routes without a real bridge workflow
 - the project requires the UI to be the primary operating surface
+- the client can add or manage remote hosts, but the gateway cannot
+- the client can trigger bridge actions that agents cannot reach through the gateway
+- the client is the only place where target or device state can be changed
 
 A local-only placeholder gateway is explicitly incomplete.
 
@@ -201,6 +292,7 @@ The gateway is the primary interface.
 The gateway should be able to drive:
 
 - target or device selection
+- target or device creation/update/removal
 - probe or discovery
 - read actions
 - execution actions
@@ -246,6 +338,7 @@ Prefer these implementation traits:
 - structured results over raw text-only returns
 - explicit `probe` or `discover` before larger actions
 - explicit current target/device state when the flow depends on continuity
+- one source of truth for important actions, with the gateway as the public control surface
 - provider-backed actions over placeholder handlers
 - narrow, controlled mutations over broad unrestricted shell access
 - policy surfaces that can disable risky actions without removing the architecture
@@ -267,9 +360,10 @@ When creating a new project, use this sequence:
 1. choose one real provider-backed path
 2. make that path truly runnable end-to-end
 3. expose the smallest gateway surface that proves the path is real
-4. add structured result handling
-5. add one controlled mutation path
-6. only then add convenience layers
+4. make important client actions reachable through the gateway
+5. add structured result handling
+6. add one controlled mutation path
+7. only then add convenience layers
 ```
 
 If the project supports more than one platform later, that is expansion.
@@ -304,6 +398,16 @@ Keep it optional.
 
 Do not let it become the primary reasoning surface for the bridge.
 
+If the client already performs an important action directly:
+
+```text
+move the action to the gateway or shared service layer first
+  ->
+then let the client call that path
+```
+
+Do not preserve a client-only action path for convenience.
+
 ## Stop Conditions
 
 The project is allowed to stop at a minimal stage only when all of these are true:
@@ -314,6 +418,7 @@ The project is allowed to stop at a minimal stage only when all of these are tru
 - execution or device access is real for that path
 - structured result handling exists
 - controlled write exists in architecture
+- important client actions are also reachable through the gateway
 
 Do not stop at:
 
@@ -321,6 +426,7 @@ Do not stop at:
 - "routes return JSON"
 - "demo local execution works"
 - "read endpoints work but writes are still future work"
+- "the client works, but the agent still cannot add hosts or change current target through the gateway"
 
 ## Validation Rule
 
@@ -328,6 +434,8 @@ Before declaring the project minimally complete, confirm:
 
 ```text
 gateway up
+  ->
+host/device management actions available through gateway
   ->
 real target reachable
   ->
@@ -341,6 +449,8 @@ result structure is honest about success and failure
 ```
 
 If the project cannot prove a real provider-backed path, treat it as incomplete.
+
+If the project cannot prove that important client actions are also gateway actions, treat it as incomplete.
 
 ## Status Interpretation Rule
 
