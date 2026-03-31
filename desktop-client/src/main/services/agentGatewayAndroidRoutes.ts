@@ -12,6 +12,7 @@ import {
   setCurrentAndroidSelection,
   writeAndroidFile
 } from "./androidGatewayService"
+import { attachGatewayDiagnosis } from "./agentGatewayDiagnosticsCore"
 import {
   badRequest,
   readBody,
@@ -27,7 +28,7 @@ export const androidRoutes: GatewayRouteDefinition[] = [
     path: "/api/android/devices",
     handler: async ({ response }) => {
       const result = await listAndroidDevices()
-      respondWithResult(response, result)
+      respondWithResult(response, attachGatewayDiagnosis("android-discover", result))
     }
   },
   {
@@ -62,7 +63,7 @@ export const androidRoutes: GatewayRouteDefinition[] = [
     path: "/api/android/devices/:serial/info",
     handler: async ({ response, params }) => {
       const result = await getAndroidDeviceInfo(params.serial)
-      respondWithResult(response, result)
+      respondWithResult(response, attachGatewayDiagnosis("android-device-info", result, { serial: params.serial }))
     }
   },
   {
@@ -71,7 +72,7 @@ export const androidRoutes: GatewayRouteDefinition[] = [
     handler: async (context) => {
       const body = await readBody<{ command?: string }>(context)
       const result = await executeAndroidSafeShell(context.params.serial, body.command ?? "")
-      respondWithResult(context.response, result)
+      respondWithResult(context.response, attachGatewayDiagnosis("android-shell", result, { serial: context.params.serial }))
     }
   },
   {
@@ -80,7 +81,7 @@ export const androidRoutes: GatewayRouteDefinition[] = [
     handler: async (context) => {
       const body = await readBody<{ path?: string }>(context)
       const result = await listAndroidFiles(context.params.serial, body.path ?? "")
-      respondWithResult(context.response, result)
+      respondWithResult(context.response, attachGatewayDiagnosis("android-files-list", result, { serial: context.params.serial }))
     }
   },
   {
@@ -89,7 +90,7 @@ export const androidRoutes: GatewayRouteDefinition[] = [
     handler: async (context) => {
       const body = await readBody<{ path?: string, recursive?: boolean }>(context)
       const result = await mkdirAndroidDirectory(context.params.serial, body.path ?? "", body.recursive ?? true)
-      respondWithResult(context.response, result)
+      respondWithResult(context.response, attachGatewayDiagnosis("android-files-mkdir", result, { serial: context.params.serial }))
     }
   },
   {
@@ -98,7 +99,7 @@ export const androidRoutes: GatewayRouteDefinition[] = [
     handler: async (context) => {
       const body = await readBody<{ path?: string, encoding?: string }>(context)
       const result = await readAndroidFile(context.params.serial, body.path ?? "", body.encoding ?? "utf-8")
-      respondWithResult(context.response, result)
+      respondWithResult(context.response, attachGatewayDiagnosis("android-files-read", result, { serial: context.params.serial }))
     }
   },
   {
@@ -114,7 +115,7 @@ export const androidRoutes: GatewayRouteDefinition[] = [
         encoding?: string
       }>(context)
       const result = await writeAndroidFile(context.params.serial, body)
-      respondWithResult(context.response, result)
+      respondWithResult(context.response, attachGatewayDiagnosis("android-files-write", result, { serial: context.params.serial }))
     }
   },
   {
@@ -128,7 +129,7 @@ export const androidRoutes: GatewayRouteDefinition[] = [
         overwrite?: boolean
       }>(context)
       const result = await pushAndroidFile(context.params.serial, body)
-      respondWithResult(context.response, result)
+      respondWithResult(context.response, attachGatewayDiagnosis("android-files-push", result, { serial: context.params.serial }))
     }
   },
   {
@@ -137,7 +138,7 @@ export const androidRoutes: GatewayRouteDefinition[] = [
     handler: async (context) => {
       const body = await readBody<{ path?: string, localPath?: string }>(context)
       const result = await pullAndroidFile(context.params.serial, body.path ?? "", body.localPath)
-      respondWithResult(context.response, result)
+      respondWithResult(context.response, attachGatewayDiagnosis("android-files-pull", result, { serial: context.params.serial }))
     }
   }
 ]

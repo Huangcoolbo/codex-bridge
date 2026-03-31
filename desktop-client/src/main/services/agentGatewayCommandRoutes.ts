@@ -1,6 +1,7 @@
 import type { CommandExecutionRequest, CommandRunRequest } from "@shared/contracts"
 
 import { executeCommand, getLastCommandResult, runCommand, setCommandDraft } from "./automationService"
+import { attachGatewayDiagnosis } from "./agentGatewayDiagnosticsCore"
 import {
   badRequest,
   readBody,
@@ -33,7 +34,7 @@ export const commandRoutes: GatewayRouteDefinition[] = [
     handler: async (context) => {
       const body = await readBody<CommandRunRequest>(context)
       const result = await runCommand(body)
-      respondWithResult(context.response, result)
+      respondWithResult(context.response, attachGatewayDiagnosis("windows-execute", result, { target: result.target }))
     }
   },
   {
@@ -60,7 +61,7 @@ export const commandRoutes: GatewayRouteDefinition[] = [
         command: body.command,
         passwordOverride: body.passwordOverride
       })
-      respondWithResult(context.response, result)
+      respondWithResult(context.response, attachGatewayDiagnosis("windows-execute", result, { target: result.target }))
     }
   }
 ]

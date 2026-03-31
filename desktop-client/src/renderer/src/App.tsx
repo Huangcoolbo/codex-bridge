@@ -24,6 +24,19 @@ type SectionProfileState = Record<ProfilePlatform, string>
 type BridgeAutomationDraftEvent = CustomEvent<CommandDraft>
 type BridgeAutomationResultEvent = CustomEvent<CommandExecutionResult>
 type AndroidTargetMode = "wireless" | "usb"
+type AndroidWirelessState =
+  | "idle"
+  | "pair-ready"
+  | "pairing"
+  | "paired"
+  | "endpoint-ready"
+  | "connecting"
+  | "connected"
+  | "stale-endpoint"
+  | "repair-required"
+  | "error"
+type AndroidEndpointSource = "none" | "service" | "connected-device" | "remembered"
+type AndroidConnectFailureKind = "stale-endpoint" | "repair-required" | "unknown"
 
 const automationDraftEvent = "bridge:automation-draft"
 const automationStartEvent = "bridge:automation-command-start"
@@ -137,21 +150,104 @@ function getRememberedAndroidConnectEndpoint(endpointLike: string): string | nul
   return loadRememberedAndroidEndpoints()[host] ?? null
 }
 
-function inferAndroidConnectEndpoint(snapshot: AndroidDiscoverySnapshot, preferredHost?: string | null): string | null {
+function forgetAndroidConnectEndpoint(endpointLike: string): void {
+  const host = extractHostFromEndpoint(endpointLike)
+  if (!host) {
+    return
+  }
+  const current = loadRememberedAndroidEndpoints()
+  if (!(host in current)) {
+    return
+  }
+  delete current[host]
+  window.localStorage.setItem(androidEndpointMemoryKey, JSON.stringify(current))
+}
+
+function inferAndroidConnectEndpoint(snapshot: AndroidDiscoverySnapshot, preferredHost?: string | null): {
+  endpoint: string | null
+  source: AndroidEndpointSource
+} {
   const connectService = snapshot.services.find((service) => service.serviceType.includes("connect") && service.address.trim())
   if (connectService?.address) {
-    return connectService.address.trim()
+    return {
+      endpoint: connectService.address.trim(),
+      source: "service"
+    }
   }
 
   const wirelessDevices = snapshot.devices.filter((device) => device.state === "device" && device.serial.includes(":"))
   if (preferredHost) {
     const preferredDevice = wirelessDevices.find((device) => extractHostFromEndpoint(device.serial) === preferredHost)
     if (preferredDevice) {
-      return preferredDevice.serial.trim()
+      return {
+        endpoint: preferredDevice.serial.trim(),
+        source: "connected-device"
+      }
     }
   }
 
-  return wirelessDevices[0]?.serial?.trim() || null
+  if (wirelessDevices[0]?.serial?.trim()) {
+    return {
+      endpoint: wirelessDevices[0].serial.trim(),
+      source: "connected-device"
+    }
+  }
+
+  return {
+    endpoint: null,
+    source: "none"
+  }
+}
+
+function classifyAndroidConnectFailure(stdout: string, stderr: string): AndroidConnectFailureKind {
+  const text = `${stdout}\n${stderr}`.toLowerCase()
+
+  if (
+    /failed to authenticate to|authentication failed|pairing/i.test(text)
+    || /unauthorized/.test(text)
+  ) {
+    return "repair-required"
+  }
+
+  if (
+    /cannot connect to|failed to connect to|unable to connect to/.test(text)
+    || /10061/.test(text)
+    || /actively refused/.test(text)
+  ) {
+    return "stale-endpoint"
+  }
+
+  return "unknown"
+}
+
+function describeAndroidWirelessState(copy: (typeof COPY)[Locale], state: AndroidWirelessState): {
+  label: string
+  description: string
+  tone: "neutral" | "success" | "warning" | "danger"
+} {
+  switch (state) {
+    case "pair-ready":
+      return { label: copy.android.statePairReady, description: copy.android.statePairReadyDescription, tone: "neutral" }
+    case "pairing":
+      return { label: copy.android.statePairing, description: copy.android.statePairingDescription, tone: "neutral" }
+    case "paired":
+      return { label: copy.android.statePaired, description: copy.android.statePairedDescription, tone: "neutral" }
+    case "endpoint-ready":
+      return { label: copy.android.stateEndpointReady, description: copy.android.stateEndpointReadyDescription, tone: "neutral" }
+    case "connecting":
+      return { label: copy.android.stateConnecting, description: copy.android.stateConnectingDescription, tone: "neutral" }
+    case "connected":
+      return { label: copy.android.stateConnected, description: copy.android.stateConnectedDescription, tone: "success" }
+    case "stale-endpoint":
+      return { label: copy.android.stateStaleEndpoint, description: copy.android.stateStaleEndpointDescription, tone: "warning" }
+    case "repair-required":
+      return { label: copy.android.stateRepairRequired, description: copy.android.stateRepairRequiredDescription, tone: "danger" }
+    case "error":
+      return { label: copy.android.stateError, description: copy.android.stateErrorDescription, tone: "danger" }
+    case "idle":
+    default:
+      return { label: copy.android.stateIdle, description: copy.android.stateIdleDescription, tone: "neutral" }
+  }
 }
 
 export default function App(): JSX.Element {
@@ -172,6 +268,7 @@ export default function App(): JSX.Element {
   const [androidProfileName, setAndroidProfileName] = useState("pixel-air")
   const [androidDescription, setAndroidDescription] = useState("")
   const [androidQrStatus, setAndroidQrStatus] = useState("")
+  const [androidWirelessState, setAndroidWirelessState] = useState<AndroidWirelessState>("idle")
   const [androidTargetMode, setAndroidTargetMode] = useState<AndroidTargetMode>("wireless")
   const [selectedAndroidUsbSerial, setSelectedAndroidUsbSerial] = useState("")
 
@@ -269,6 +366,25 @@ export default function App(): JSX.Element {
     ? selectedAndroidUsbSerial.trim()
     : androidWirelessTarget
   const canSaveAndroid = androidProfileName.trim().length > 0 && androidSaveTarget.length > 0
+  const androidWirelessStateView = describeAndroidWirelessState(copy, androidWirelessState)
+  const canPrepareAndroidWireless = androidWirelessState !== "pairing" && androidWirelessState !== "connecting"
+  const canDiscoverAndroidWireless = androidWirelessState !== "pairing" && androidWirelessState !== "connecting"
+  const canRunAndroidPair = canPairAndroid && canPrepareAndroidWireless && (
+    androidWirelessState === "pair-ready"
+    || androidWirelessState === "repair-required"
+    || androidWirelessState === "error"
+  )
+  const canRunAndroidConnect = canConnectAndroid && androidWirelessState === "endpoint-ready"
+  const canRunAndroidDisconnect = hasActiveAndroidSession && androidWirelessState === "connected"
+  const discoverButtonClassName = androidWirelessState === "paired" || androidWirelessState === "stale-endpoint"
+    ? "primary-button"
+    : "ghost-button"
+  const pairButtonClassName = androidWirelessState === "pair-ready" || androidWirelessState === "repair-required"
+    ? "primary-button"
+    : "ghost-button"
+  const connectButtonClassName = androidWirelessState === "endpoint-ready"
+    ? "primary-button"
+    : "ghost-button"
   const defaultWindowsKeyPath = dashboard?.environment.defaultWindowsKeyPath ?? ""
   const topbarProgress = Math.min(workspaceScrollTop / 92, 1)
   const isTopbarSplit = topbarProgress > 0.08
@@ -362,20 +478,24 @@ export default function App(): JSX.Element {
       setPairEndpoint(pairService.address)
     }
 
-    if (inferredConnectEndpoint && inferredConnectEndpoint !== connectEndpoint.trim()) {
-      setConnectEndpoint(inferredConnectEndpoint)
-      rememberAndroidConnectEndpoint(inferredConnectEndpoint)
+    if (inferredConnectEndpoint.endpoint && inferredConnectEndpoint.endpoint !== connectEndpoint.trim()) {
+      setConnectEndpoint(inferredConnectEndpoint.endpoint)
+      rememberAndroidConnectEndpoint(inferredConnectEndpoint.endpoint)
     }
 
-    if (inferredConnectEndpoint) {
-      setAndroidQrStatus(copy.android.qrDetected)
+    if (inferredConnectEndpoint.endpoint) {
+      setAndroidWirelessState(inferredConnectEndpoint.source === "connected-device" ? "connected" : "endpoint-ready")
+      setAndroidQrStatus(copy.android.qrDetectedLive)
       return
     }
 
     if (!androidQrStatus) {
       setAndroidQrStatus(copy.android.qrReady)
     }
-  }, [androidDiscovery, pairEndpoint, connectEndpoint, androidQrStatus, copy.android.qrDetected, copy.android.qrReady])
+    if (androidWirelessState === "idle" && pairEndpoint.trim() && pairCode.trim()) {
+      setAndroidWirelessState("pair-ready")
+    }
+  }, [androidDiscovery, pairEndpoint, pairCode, connectEndpoint, androidQrStatus, androidWirelessState, copy.android.qrDetectedLive, copy.android.qrReady])
 
   useEffect(() => {
     if (connectEndpoint.trim() || !pairEndpoint.trim()) {
@@ -385,9 +505,45 @@ export default function App(): JSX.Element {
     const remembered = getRememberedAndroidConnectEndpoint(pairEndpoint)
     if (remembered) {
       setConnectEndpoint(remembered)
-      setAndroidQrStatus(copy.android.qrDetected)
+      setAndroidWirelessState("endpoint-ready")
+      setAndroidQrStatus(copy.android.qrDetectedRemembered)
     }
-  }, [pairEndpoint, connectEndpoint, copy.android.qrDetected])
+  }, [pairEndpoint, connectEndpoint, copy.android.qrDetectedRemembered])
+
+  useEffect(() => {
+    if (latestTask.status === "running") {
+      return
+    }
+
+    if (androidWirelessState === "stale-endpoint" || androidWirelessState === "repair-required" || androidWirelessState === "error") {
+      return
+    }
+
+    if (androidDiscovery?.devices.some((device) => device.state === "device" && device.serial.includes(":"))) {
+      if (androidWirelessState !== "connected") {
+        setAndroidWirelessState("connected")
+      }
+      return
+    }
+
+    if (connectEndpoint.trim()) {
+      if (androidWirelessState !== "endpoint-ready") {
+        setAndroidWirelessState("endpoint-ready")
+      }
+      return
+    }
+
+    if (pairEndpoint.trim() && pairCode.trim()) {
+      if (androidWirelessState !== "pair-ready") {
+        setAndroidWirelessState("pair-ready")
+      }
+      return
+    }
+
+    if (androidWirelessState !== "idle") {
+      setAndroidWirelessState("idle")
+    }
+  }, [pairEndpoint, pairCode, connectEndpoint, androidDiscovery, latestTask.status, androidWirelessState])
 
   function setPlatformSelection(platform: ProfilePlatform, name: string): void {
     setSelectedProfiles((current) => ({ ...current, [platform]: name }))
@@ -594,12 +750,12 @@ export default function App(): JSX.Element {
     const preferredHost = extractHostFromEndpoint(connectEndpoint) ?? extractHostFromEndpoint(pairEndpoint)
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const snapshot = await refreshAndroidDiscoverySilently()
-      const nextEndpoint = inferAndroidConnectEndpoint(snapshot, preferredHost)
-      if (nextEndpoint) {
-        setConnectEndpoint(nextEndpoint)
-        rememberAndroidConnectEndpoint(nextEndpoint)
-        setAndroidQrStatus(copy.android.qrDetected)
-        return nextEndpoint
+      const discovery = inferAndroidConnectEndpoint(snapshot, preferredHost)
+      if (discovery.endpoint) {
+        setConnectEndpoint(discovery.endpoint)
+        rememberAndroidConnectEndpoint(discovery.endpoint)
+        setAndroidQrStatus(discovery.source === "connected-device" ? copy.android.qrConnected : copy.android.qrDetectedLive)
+        return discovery.endpoint
       }
 
       if (attempt < maxAttempts - 1) {
@@ -612,6 +768,7 @@ export default function App(): JSX.Element {
 
   async function handleAndroidPrepareWireless(): Promise<void> {
     setAndroidTargetMode("wireless")
+    setAndroidWirelessState(pairEndpoint.trim() && pairCode.trim() ? "pair-ready" : "idle")
     setAndroidQrStatus(copy.android.qrReady)
     appendLog(copy.android.showQr, copy.android.qrReady)
     if (!androidDiscovery) {
@@ -621,6 +778,7 @@ export default function App(): JSX.Element {
 
   async function handleAndroidPair(): Promise<void> {
     setAndroidTargetMode("wireless")
+    setAndroidWirelessState("pairing")
     setLatestTask({ label: copy.android.pairing, status: "running" })
     try {
       const pairResult = await window.bridgeDesktop.pairAndroid(pairEndpoint, pairCode, adbPath || undefined)
@@ -632,6 +790,7 @@ export default function App(): JSX.Element {
 
       appendLog(copy.android.pairing, pairResult)
       setAndroidQrStatus(copy.android.qrPaired)
+      setAndroidWirelessState("paired")
       setLatestTask({ label: copy.android.resolvingEndpoint, status: "running" })
 
       const nextConnectEndpoint = await waitForAndroidConnectEndpoint()
@@ -643,13 +802,29 @@ export default function App(): JSX.Element {
           stderr: copy.android.connectEndpointMissing
         }
         appendLog(`${copy.android.resolvingEndpoint} failed`, failure)
+        setAndroidWirelessState("paired")
         setLatestTask({ label: copy.android.resolvingEndpoint, status: "error" })
         return
       }
 
+      setAndroidWirelessState("endpoint-ready")
       setLatestTask({ label: copy.android.connecting, status: "running" })
+      setAndroidWirelessState("connecting")
       const connectResult = await window.bridgeDesktop.connectAndroid(nextConnectEndpoint, adbPath || undefined)
       if (isFailedResult(connectResult)) {
+        const failureKind = classifyAndroidConnectFailure(connectResult.stdout, connectResult.stderr)
+        if (failureKind === "stale-endpoint") {
+          forgetAndroidConnectEndpoint(nextConnectEndpoint)
+          setAndroidWirelessState("stale-endpoint")
+          setAndroidQrStatus(copy.android.connectEndpointStale)
+        } else if (failureKind === "repair-required") {
+          forgetAndroidConnectEndpoint(nextConnectEndpoint)
+          setAndroidWirelessState("repair-required")
+          setAndroidQrStatus(copy.android.connectNeedsRepair)
+        } else {
+          setAndroidWirelessState("error")
+          setAndroidQrStatus(copy.android.qrFailed)
+        }
         appendLog(`${copy.android.connecting} failed`, connectResult)
         setLatestTask({ label: copy.android.connecting, status: "error" })
         await refreshAndroidDiscoverySilently()
@@ -667,10 +842,12 @@ export default function App(): JSX.Element {
         stdout: [pairResult.stdout.trim(), connectResult.stdout.trim()].filter(Boolean).join("\n")
       }
       appendLog(copy.android.connecting, successResult)
+      setAndroidWirelessState("connected")
       setAndroidQrStatus(copy.android.qrConnected)
       setLatestTask({ label: copy.android.connecting, status: "success" })
     } catch (error) {
       appendLog(`${copy.android.pairing} failed`, error instanceof Error ? error.message : String(error))
+      setAndroidWirelessState("error")
       setLatestTask({ label: copy.android.pairing, status: "error" })
     }
     await refreshAndroidDiscoverySilently()
@@ -678,19 +855,51 @@ export default function App(): JSX.Element {
 
   async function handleAndroidConnect(): Promise<void> {
     setAndroidTargetMode("wireless")
-    await runTask(copy.android.connecting, () => window.bridgeDesktop.connectAndroid(connectEndpoint, adbPath || undefined), (result) => {
+    setAndroidWirelessState("connecting")
+    setLatestTask({ label: copy.android.connecting, status: "running" })
+    try {
+      const result = await window.bridgeDesktop.connectAndroid(connectEndpoint, adbPath || undefined)
+      if (isFailedResult(result)) {
+        const failureKind = classifyAndroidConnectFailure(result.stdout, result.stderr)
+        if (failureKind === "stale-endpoint") {
+          forgetAndroidConnectEndpoint(connectEndpoint)
+          setAndroidWirelessState("stale-endpoint")
+          setAndroidQrStatus(copy.android.connectEndpointStale)
+        } else if (failureKind === "repair-required") {
+          forgetAndroidConnectEndpoint(connectEndpoint)
+          setAndroidWirelessState("repair-required")
+          setAndroidQrStatus(copy.android.connectNeedsRepair)
+        } else {
+          setAndroidWirelessState("error")
+          setAndroidQrStatus(copy.android.qrFailed)
+        }
+        appendLog(`${copy.android.connecting} failed`, result)
+        setLatestTask({ label: copy.android.connecting, status: "error" })
+        await refreshAndroidDiscoverySilently()
+        return
+      }
+
       const resolvedConnectEndpoint = parseConnectEndpointFromOutput(result.stdout) ?? connectEndpoint.trim()
       if (resolvedConnectEndpoint) {
         setConnectEndpoint(resolvedConnectEndpoint)
         rememberAndroidConnectEndpoint(resolvedConnectEndpoint)
       }
       setAndroidQrStatus(copy.android.qrConnected)
-    })
+      setAndroidWirelessState("connected")
+      appendLog(copy.android.connecting, result)
+      setLatestTask({ label: copy.android.connecting, status: "success" })
+    } catch (error) {
+      appendLog(`${copy.android.connecting} failed`, error instanceof Error ? error.message : String(error))
+      setAndroidQrStatus(copy.android.qrFailed)
+      setAndroidWirelessState("error")
+      setLatestTask({ label: copy.android.connecting, status: "error" })
+    }
     await refreshAndroidDiscoverySilently()
   }
 
   async function handleAndroidDisconnect(): Promise<void> {
     await runTask(copy.android.disconnecting, () => window.bridgeDesktop.disconnectAndroid(undefined, adbPath || undefined))
+    setAndroidWirelessState(connectEndpoint.trim() ? "endpoint-ready" : (pairEndpoint.trim() && pairCode.trim() ? "pair-ready" : "idle"))
     await refreshAndroidDiscoverySilently()
   }
 
@@ -700,7 +909,43 @@ export default function App(): JSX.Element {
       setAndroidTargetMode("wireless")
       setConnectEndpoint(profile.target)
       setAndroidProfileName(profile.name)
-      await runTask(copy.android.connecting, () => window.bridgeDesktop.connectAndroid(profile.target, adbPath || undefined))
+      setAndroidWirelessState("connecting")
+      setLatestTask({ label: copy.android.connecting, status: "running" })
+      try {
+        const result = await window.bridgeDesktop.connectAndroid(profile.target, adbPath || undefined)
+        if (isFailedResult(result)) {
+          const failureKind = classifyAndroidConnectFailure(result.stdout, result.stderr)
+          if (failureKind === "stale-endpoint") {
+            forgetAndroidConnectEndpoint(profile.target)
+            setAndroidWirelessState("stale-endpoint")
+            setAndroidQrStatus(copy.android.connectEndpointStale)
+          } else if (failureKind === "repair-required") {
+            forgetAndroidConnectEndpoint(profile.target)
+            setAndroidWirelessState("repair-required")
+            setAndroidQrStatus(copy.android.connectNeedsRepair)
+          } else {
+            setAndroidWirelessState("error")
+            setAndroidQrStatus(copy.android.qrFailed)
+          }
+          appendLog(`${copy.android.connecting} failed`, result)
+          setLatestTask({ label: copy.android.connecting, status: "error" })
+        } else {
+          const resolvedConnectEndpoint = parseConnectEndpointFromOutput(result.stdout) ?? profile.target
+          if (resolvedConnectEndpoint) {
+            setConnectEndpoint(resolvedConnectEndpoint)
+            rememberAndroidConnectEndpoint(resolvedConnectEndpoint)
+          }
+          setAndroidQrStatus(copy.android.qrConnected)
+          setAndroidWirelessState("connected")
+          appendLog(copy.android.connecting, result)
+          setLatestTask({ label: copy.android.connecting, status: "success" })
+        }
+      } catch (error) {
+        appendLog(`${copy.android.connecting} failed`, error instanceof Error ? error.message : String(error))
+        setAndroidQrStatus(copy.android.qrFailed)
+        setAndroidWirelessState("error")
+        setLatestTask({ label: copy.android.connecting, status: "error" })
+      }
       await refreshAndroidDiscoverySilently()
       return
     }
@@ -734,6 +979,27 @@ export default function App(): JSX.Element {
     setAndroidTargetMode("usb")
     if (!androidProfileName.trim() || androidProfileName === "pixel-air") {
       setAndroidProfileName(normalizeProfileName(device.details.model ?? device.serial))
+    }
+  }
+
+  function handlePairEndpointChange(value: string): void {
+    setPairEndpoint(value)
+    if (androidWirelessState === "stale-endpoint" || androidWirelessState === "repair-required" || androidWirelessState === "error") {
+      setAndroidWirelessState(value.trim() && pairCode.trim() ? "pair-ready" : "idle")
+    }
+  }
+
+  function handlePairCodeChange(value: string): void {
+    setPairCode(value)
+    if (androidWirelessState === "stale-endpoint" || androidWirelessState === "repair-required" || androidWirelessState === "error") {
+      setAndroidWirelessState(pairEndpoint.trim() && value.trim() ? "pair-ready" : "idle")
+    }
+  }
+
+  function handleConnectEndpointChange(value: string): void {
+    setConnectEndpoint(value)
+    if (androidWirelessState === "stale-endpoint" || androidWirelessState === "repair-required" || androidWirelessState === "error") {
+      setAndroidWirelessState(value.trim() ? "endpoint-ready" : (pairEndpoint.trim() && pairCode.trim() ? "pair-ready" : "idle"))
     }
   }
 
@@ -956,8 +1222,14 @@ export default function App(): JSX.Element {
                 <div className="workflow-head">
                   <div className="header-copy"><h3>{copy.android.workflowTitle}</h3>{androidQrStatus && <p className="section-note">{androidQrStatus}</p>}</div>
                   <div className="header-actions">
-                    <button className="ghost-button" onClick={() => void handleAndroidDiscover()}>{copy.android.discover}</button>
-                    <button className="toolbar-primary" onClick={() => void handleAndroidPrepareWireless()}>{copy.android.showQr}</button>
+                    <button className={discoverButtonClassName} disabled={!canDiscoverAndroidWireless} onClick={() => void handleAndroidDiscover()}>{copy.android.discover}</button>
+                    <button
+                      className={androidWirelessState === "idle" || androidWirelessState === "pair-ready" ? "toolbar-primary" : "ghost-button"}
+                      disabled={!canPrepareAndroidWireless}
+                      onClick={() => void handleAndroidPrepareWireless()}
+                    >
+                      {copy.android.showQr}
+                    </button>
                   </div>
                 </div>
 
@@ -983,21 +1255,23 @@ export default function App(): JSX.Element {
                       <div className="qr-preview is-empty">
                         <p>{copy.android.qrIdle}</p>
                       </div>
-                      <div className="qr-meta">
-                        <strong>{androidQrStatus || copy.android.qrReady}</strong>
-                        <span>{connectEndpoint || pairEndpoint || copy.android.qrEmptyHint}</span>
+                      <div className={`qr-meta wireless-state-card is-${androidWirelessStateView.tone}`}>
+                        <small>{copy.android.stateTitle}</small>
+                        <strong>{androidWirelessStateView.label}</strong>
+                        <span>{androidWirelessStateView.description}</span>
+                        <small>{connectEndpoint || pairEndpoint || copy.android.qrEmptyHint}</small>
                       </div>
                     </div>
                     <div className="field-grid field-grid-2">
                       <label><span>{copy.android.adbPath}</span><input value={adbPath} onChange={(event) => setAdbPath(event.target.value)} placeholder={copy.android.adbPathPlaceholder} /></label>
-                      <label><span>{copy.android.pairEndpoint}</span><input value={pairEndpoint} onChange={(event) => setPairEndpoint(event.target.value)} placeholder={copy.android.pairEndpointPlaceholder} /></label>
-                      <label><span>{copy.android.pairCode}</span><input value={pairCode} onChange={(event) => setPairCode(event.target.value)} placeholder={copy.android.pairCodePlaceholder} /></label>
-                      <label><span>{copy.android.connectEndpoint}</span><input value={connectEndpoint} onChange={(event) => setConnectEndpoint(event.target.value)} placeholder={copy.android.connectEndpointPlaceholder} /></label>
+                      <label><span>{copy.android.pairEndpoint}</span><input value={pairEndpoint} onChange={(event) => handlePairEndpointChange(event.target.value)} placeholder={copy.android.pairEndpointPlaceholder} /></label>
+                      <label><span>{copy.android.pairCode}</span><input value={pairCode} onChange={(event) => handlePairCodeChange(event.target.value)} placeholder={copy.android.pairCodePlaceholder} /></label>
+                      <label><span>{copy.android.connectEndpoint}</span><input value={connectEndpoint} onChange={(event) => handleConnectEndpointChange(event.target.value)} placeholder={copy.android.connectEndpointPlaceholder} /></label>
                     </div>
                     <div className="button-row form-tail">
-                      <button className="ghost-button" disabled={!canPairAndroid} onClick={() => void handleAndroidPair()}>{copy.android.pair}</button>
-                      <button className="primary-button" disabled={!canConnectAndroid} onClick={() => void handleAndroidConnect()}>{copy.android.connect}</button>
-                      <button className="ghost-button subtle-button" disabled={!hasActiveAndroidSession} onClick={() => void handleAndroidDisconnect()}>{copy.android.disconnect}</button>
+                      <button className={pairButtonClassName} disabled={!canRunAndroidPair} onClick={() => void handleAndroidPair()}>{copy.android.pair}</button>
+                      <button className={connectButtonClassName} disabled={!canRunAndroidConnect} onClick={() => void handleAndroidConnect()}>{copy.android.connect}</button>
+                      <button className="ghost-button subtle-button" disabled={!canRunAndroidDisconnect} onClick={() => void handleAndroidDisconnect()}>{copy.android.disconnect}</button>
                     </div>
                     <div className="stack-card">
                       <div className="stack-card-head"><h3>{copy.android.mdnsServices}</h3></div>

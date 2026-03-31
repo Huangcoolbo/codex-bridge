@@ -128,7 +128,7 @@ data/agent-gateway.audit.log
 ```text
 1. 先读环境变量 BRIDGE_AGENT_TOKEN
 2. 如果没有，再调用 GET /health
-3. 从 gateway.auth_bootstrap.token_path 读取本地 token 文件
+3. 按 health 给出的 bootstrap 策略去应用数据目录读取本地 token 文件
 4. 再带着 token 调真正的 /api/* 接口
 ```
 
@@ -142,13 +142,22 @@ data/agent-gateway.audit.log
 
 ```text
 先看环境变量
-再看 health 里告诉你的 token 文件位置
+再看 health 里给出的 bootstrap 规则
 ```
+
+`/health` 现在不会把 token 文件绝对路径直接暴露给未认证请求。  
+它只会告诉调用方：
+
+- 优先读哪个环境变量
+- 如果没有，应该去应用数据目录找本地 token 文件
+- 常见位置规则是什么
 
 ## 5. 当前接口总览
 
 ```text
 GET    /health
+
+GET    /api/diagnostics/self-check
 
 GET    /api/targets
 GET    /api/targets/:name
@@ -182,9 +191,200 @@ POST   /api/android/devices/:serial/files/write
 POST   /api/android/devices/:serial/files/push
 ```
 
-## 6. 先理解 4 条主路径
+## 6. 接口职责边界
 
-### 4.1 Target 管理
+这一节只回答 3 个问题：
+
+- `/health` 和 `/api/diagnostics/self-check` 到底有什么区别
+- 哪些接口只检查本地 gateway，自身不碰远程设备
+- 哪些接口必须指定目标或设备，才会真正去碰远端
+
+### 6.1 `/health` 只负责轻量健康检查和接入引导
+
+`GET /health` 的职责是：
+
+- 确认 gateway 进程在线
+- 返回监听地址
+- 说明当前是否要求 token
+- 给出 token bootstrap 规则
+
+它回答的是：
+
+```text
+gateway 活着没
+怎么合法接进来
+```
+
+它不负责：
+
+- 检查 Python runtime 是否存在
+- 检查 ADB 是否存在
+- 判断远程 Windows / Android 环境是否异常
+- 判断当前失败更像环境问题还是代码回归
+
+所以 `/health` 是公开的，不要求 token。
+
+### 6.2 `/api/diagnostics/self-check` 只负责本地自检
+
+`GET /api/diagnostics/self-check` 的职责是：
+
+- 检查本地 gateway 依赖是否就绪
+- 返回当前鉴权元信息
+- 给出本地诊断结论
+
+它当前主要检查：
+
+- 本地 Python runtime
+- 本地 ADB
+
+它回答的是：
+
+```text
+桥自己有没有准备好干活
+本地依赖更像健康、环境异常，还是代码链异常
+```
+
+它不直接回答：
+
+- 某台 Windows 主机是否可达
+- 某台 Windows 主机的 SSH 是否可用
+- 某台 Android 设备是否在线
+- 某台 Android 设备当前是否需要重新配对
+
+这些都需要真正带着目标上下文去访问远端，所以 `/api/diagnostics/self-check` 要求 token，但不要求 target 或 device serial。
+
+### 6.3 只检查本地状态、不要求远程目标的接口
+
+这些接口不会主动连接远程设备：
+
+```text
+GET    /health
+GET    /api/diagnostics/self-check
+
+GET    /api/targets
+GET    /api/targets/:name
+POST   /api/targets
+PUT    /api/targets/:name
+DELETE /api/targets/:name
+
+GET    /api/targets/current
+POST   /api/targets/current
+DELETE /api/targets/current
+
+GET    /api/android/devices
+GET    /api/android/current
+POST   /api/android/current
+DELETE /api/android/current
+```
+
+要注意：
+
+- `GET /api/android/devices` 会读取本机 ADB 当前看到的设备列表
+- 这不等于“主动去连某台 Android 设备”
+- 它更像“看本地桥现在看到了谁”
+
+### 6.4 必须带目标或设备上下文，才会真正碰远端的接口
+
+#### Windows
+
+这些接口会真正走到 Windows SSH 路径：
+
+```text
+POST /api/probe
+POST /api/command/set
+POST /api/command/run
+POST /api/command/execute
+GET  /api/command/last
+```
+
+它们需要：
+
+- 显式传 `target`
+- 或者依赖已经设置好的 current target
+
+大白话就是：
+
+```text
+不先告诉 gateway 你要操作哪台 Windows 主机
+它就没法 probe 或 execute
+```
+
+#### Android
+
+这些接口会真正走到 Android ADB 路径：
+
+```text
+GET  /api/android/devices/:serial/info
+POST /api/android/devices/:serial/shell/execute
+POST /api/android/devices/:serial/files/list
+POST /api/android/devices/:serial/files/read
+POST /api/android/devices/:serial/files/pull
+POST /api/android/devices/:serial/files/mkdir
+POST /api/android/devices/:serial/files/write
+POST /api/android/devices/:serial/files/push
+```
+
+它们需要：
+
+- 明确的 `:serial`
+- 并且这台设备当前确实在 ADB 可见范围内
+
+也就是说：
+
+```text
+这些接口不是“猜一台 Android 设备帮你操作”
+而是“你明确指定哪台设备，然后 gateway 再去碰它”
+```
+
+### 6.5 远程环境问题应该由谁判断
+
+这一点最容易混。
+
+#### `/api/diagnostics/self-check`
+
+只判断：
+
+- 本地 gateway 是否健康
+- 本地依赖是否缺失
+- 本地更像环境问题还是代码链异常
+
+#### 远程环境问题
+
+应该由真正连远程目标的接口来判断，例如：
+
+- Windows：
+  - `POST /api/probe`
+  - `POST /api/command/execute`
+- Android：
+  - `GET /api/android/devices/:serial/info`
+  - `POST /api/android/devices/:serial/files/*`
+  - `POST /api/android/devices/:serial/shell/execute`
+
+这些接口失败时，返回中的 `diagnosis` 才更接近：
+
+- SSH 认证失败
+- SSH 端口拒绝连接
+- DNS 解析失败
+- Android 设备 unauthorized
+- Android 设备 offline
+- Android 路径无效
+
+所以正确的理解顺序是：
+
+```text
+/health
+  -> gateway 活着没，怎么接入
+
+/api/diagnostics/self-check
+  -> gateway 本地依赖是否健康
+
+/api/probe 或真正的 Windows / Android 操作接口
+  -> 远程目标是否真的可达、可执行、可读写
+```
+
+## 7. 先理解 4 条主路径
+
+### 7.1 Target 管理
 
 ```text
 POST /api/targets
@@ -197,7 +397,7 @@ DELETE /api/targets/:name
   -> 从 data/hosts.json 删除
 ```
 
-### 4.2 Current Target / Session
+### 7.2 Current Target / Session
 
 ```text
 GET /api/targets/current
@@ -207,7 +407,7 @@ DELETE /api/targets/current
 
 这层是当前会话态，不是主配置表本身。
 
-### 4.3 Windows Probe / Execute
+### 7.3 Windows Probe / Execute
 
 ```text
 Agent
@@ -219,7 +419,7 @@ Agent
   -> Windows PowerShell
 ```
 
-### 4.4 Android Device / Files
+### 7.4 Android Device / Files
 
 ```text
 Agent
@@ -230,7 +430,7 @@ Agent
   -> Android device
 ```
 
-## 7. 返回结构
+## 8. 返回结构
 
 大部分接口会保持这种统一结构：
 
@@ -260,22 +460,22 @@ data
   -> 结构化结果
 ```
 
-## 8. 最小可用调用序列
+## 9. 最小可用调用序列
 
-### 6.1 健康检查
+### 9.1 健康检查
 
 ```bash
 curl http://127.0.0.1:8765/health
 ```
 
-### 6.2 查看已有目标
+### 9.2 查看已有目标
 
 ```bash
 curl http://127.0.0.1:8765/api/targets ^
   -H "Authorization: Bearer <token>"
 ```
 
-### 6.3 设置 current target
+### 9.3 设置 current target
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/targets/current ^
@@ -284,7 +484,7 @@ curl -X POST http://127.0.0.1:8765/api/targets/current ^
   -d "{\"target\":\"localhost\"}"
 ```
 
-### 6.4 直接执行一条命令
+### 9.4 直接执行一条命令
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/command/execute ^
@@ -293,11 +493,11 @@ curl -X POST http://127.0.0.1:8765/api/command/execute ^
   -d "{\"target\":\"localhost\",\"shell\":\"powershell\",\"command\":\"Get-Date\"}"
 ```
 
-## 9. 常见调用模板
+## 10. 常见调用模板
 
 这一节不再讲抽象接口，而是直接给最常见的调用模板。
 
-### 7.1 新建一个 Windows target
+### 10.1 新建一个 Windows target
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/targets ^
@@ -315,7 +515,7 @@ POST /api/targets
   -> data/hosts.json
 ```
 
-### 7.2 设置当前 target
+### 10.2 设置当前 target
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/targets/current ^
@@ -324,7 +524,7 @@ curl -X POST http://127.0.0.1:8765/api/targets/current ^
   -d "{\"target\":\"lab-win\"}"
 ```
 
-### 7.3 探测一个 Windows target
+### 10.3 探测一个 Windows target
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/probe ^
@@ -346,7 +546,7 @@ curl -X POST http://127.0.0.1:8765/api/probe ^
 }
 ```
 
-### 7.4 执行 PowerShell
+### 10.4 执行 PowerShell
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/command/execute ^
@@ -363,19 +563,19 @@ stderr
 exit_code
 ```
 
-### 7.5 列出 Android 设备
+### 10.5 列出 Android 设备
 
 ```bash
 curl http://127.0.0.1:8765/api/android/devices
 ```
 
-### 7.6 读取 Android 设备信息
+### 10.6 读取 Android 设备信息
 
 ```bash
 curl http://127.0.0.1:8765/api/android/devices/608e7d4d/info
 ```
 
-### 7.7 列出 Android 目录
+### 10.7 列出 Android 目录
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/android/devices/608e7d4d/files/list ^
@@ -383,7 +583,7 @@ curl -X POST http://127.0.0.1:8765/api/android/devices/608e7d4d/files/list ^
   -d "{\"path\":\"/sdcard/Documents\"}"
 ```
 
-### 7.8 在 Android 上创建目录
+### 10.8 在 Android 上创建目录
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/android/devices/608e7d4d/files/mkdir ^
@@ -391,7 +591,7 @@ curl -X POST http://127.0.0.1:8765/api/android/devices/608e7d4d/files/mkdir ^
   -d "{\"path\":\"/sdcard/Documents/codex-gateway-workspace\",\"recursive\":true}"
 ```
 
-### 7.9 在 Android 上写文本文件
+### 10.9 在 Android 上写文本文件
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/android/devices/608e7d4d/files/write ^
@@ -399,7 +599,7 @@ curl -X POST http://127.0.0.1:8765/api/android/devices/608e7d4d/files/write ^
   -d "{\"path\":\"/sdcard/Documents/codex-gateway-workspace/test.txt\",\"content\":\"hello from gateway\",\"mode\":\"overwrite\",\"create_if_missing\":true,\"encoding\":\"utf-8\"}"
 ```
 
-### 7.10 一个完整的典型顺序
+### 10.10 一个完整的典型顺序
 
 ```text
 先建 target
@@ -416,11 +616,11 @@ curl -X POST http://127.0.0.1:8765/api/android/devices/608e7d4d/files/write ^
   -> files/read / files/write
 ```
 
-## 8. Android 当前开放边界
+## 11. Android 当前开放边界
 
 当前 Android gateway 只开放了只读接口和第一批受控写接口；写操作能力不是 ADB 本身不能做，而是当前版本只把低风险路径产品化暴露出来。
 
-### 7.1 当前已开放
+### 11.1 当前已开放
 
 ```text
 只读
@@ -437,7 +637,7 @@ curl -X POST http://127.0.0.1:8765/api/android/devices/608e7d4d/files/write ^
   -> files/push
 ```
 
-### 7.2 当前未正式开放
+### 11.2 当前未正式开放
 
 ```text
 files/delete
@@ -449,7 +649,7 @@ install apk
 任意 raw adb shell
 ```
 
-## 9. Android 写接口的当前限制
+## 12. Android 写接口的当前限制
 
 ### `files/mkdir`
 
@@ -481,7 +681,7 @@ install apk
 默认 overwrite=false
 ```
 
-## 10. 字段映射
+## 13. 字段映射
 
 HTTP body 和内部配置字段存在映射关系：
 
@@ -494,16 +694,16 @@ note           <-> description
 store_password <-> storePassword
 ```
 
-## 11. 安全边界
+## 14. 安全边界
 
-### 10.1 passwordOverride
+### 14.1 passwordOverride
 
 ```text
 只用于一次性 probe / execute
 不持久化
 ```
 
-### 10.2 password
+### 14.2 password
 
 ```text
 只有在密码认证

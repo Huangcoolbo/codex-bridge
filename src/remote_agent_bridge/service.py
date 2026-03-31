@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from remote_agent_bridge.exceptions import (
     CommandExecutionError,
@@ -18,6 +19,14 @@ from remote_agent_bridge.storage import HostRegistry
 _TEMPLATE_PATTERN = re.compile(r"\{\{\s*(.+?)\s*\}\}")
 _KEY_TOKEN_PATTERN = re.compile(r"[^.\[\]]+")
 _INDEX_TOKEN_PATTERN = re.compile(r"\[(\d+)\]")
+
+
+@dataclass(frozen=True)
+class WorkflowOperationDefinition:
+    """Describe how one workflow operation is validated and executed."""
+
+    handler: Callable[[Any, Dict[str, Any]], RemoteOperationResult]
+    required_fields: Tuple[str, ...] = ()
 
 
 class BridgeService:
@@ -191,65 +200,109 @@ class BridgeService:
             provider.close()
 
     def _run_workflow_step(self, provider: Any, step: Dict[str, Any]) -> RemoteOperationResult:
-        operation = str(step.get("operation", "")).strip()
-        if not operation:
+        operation = self._workflow_step_operation(step)
+        if operation == "workflow":
             raise ValueError("Each workflow step must include a non-empty 'operation'.")
 
-        if operation == "exec":
-            command = str(step.get("command", ""))
-            if not command.strip():
-                raise ValueError("Workflow exec step requires a non-empty 'command'.")
-            return provider.execute(
-                command,
-                cwd=step.get("cwd"),
-                timeout_seconds=step.get("timeout_seconds"),
-            )
+        definition = self._workflow_operation_definitions().get(operation)
+        if definition is None:
+            raise ValueError(f"Unsupported workflow operation: {operation}")
 
-        if operation == "read-file":
-            path = str(step.get("path", ""))
-            if not path.strip():
-                raise ValueError("Workflow read-file step requires a non-empty 'path'.")
-            return provider.read_file(path, encoding=str(step.get("encoding", "utf-8")))
+        self._validate_workflow_step_fields(operation, step, definition.required_fields)
+        return definition.handler(provider, step)
 
-        if operation == "list-dir":
-            path = str(step.get("path", ""))
-            if not path.strip():
-                raise ValueError("Workflow list-dir step requires a non-empty 'path'.")
-            return provider.list_dir(path)
+    @staticmethod
+    def _workflow_operation_definitions() -> Dict[str, WorkflowOperationDefinition]:
+        return {
+            "exec": WorkflowOperationDefinition(
+                handler=BridgeService._run_exec_workflow_step,
+                required_fields=("command",),
+            ),
+            "read-file": WorkflowOperationDefinition(
+                handler=BridgeService._run_read_file_workflow_step,
+                required_fields=("path",),
+            ),
+            "list-dir": WorkflowOperationDefinition(
+                handler=BridgeService._run_list_dir_workflow_step,
+                required_fields=("path",),
+            ),
+            "write-file": WorkflowOperationDefinition(
+                handler=BridgeService._run_write_file_workflow_step,
+                required_fields=("path", "content"),
+            ),
+            "search-text": WorkflowOperationDefinition(
+                handler=BridgeService._run_search_text_workflow_step,
+                required_fields=("path", "pattern"),
+            ),
+            "system-info": WorkflowOperationDefinition(
+                handler=BridgeService._run_system_info_workflow_step,
+            ),
+            "probe": WorkflowOperationDefinition(
+                handler=BridgeService._run_probe_workflow_step,
+            ),
+        }
 
-        if operation == "write-file":
-            path = str(step.get("path", ""))
-            if not path.strip():
-                raise ValueError("Workflow write-file step requires a non-empty 'path'.")
-            if "content" not in step:
-                raise ValueError("Workflow write-file step requires 'content'.")
-            return provider.write_file(
-                path,
-                content=str(step.get("content")),
-                encoding=str(step.get("encoding", "utf-8")),
-            )
+    @staticmethod
+    def _validate_workflow_step_fields(
+        operation: str,
+        step: Dict[str, Any],
+        required_fields: Tuple[str, ...],
+    ) -> None:
+        for field_name in required_fields:
+            if field_name not in step:
+                if field_name == "content":
+                    raise ValueError(f"Workflow {operation} step requires '{field_name}'.")
+                raise ValueError(f"Workflow {operation} step requires a non-empty '{field_name}'.")
 
-        if operation == "search-text":
-            path = str(step.get("path", ""))
-            pattern = str(step.get("pattern", ""))
-            if not path.strip():
-                raise ValueError("Workflow search-text step requires a non-empty 'path'.")
-            if not pattern.strip():
-                raise ValueError("Workflow search-text step requires a non-empty 'pattern'.")
-            return provider.search_text(
-                path,
-                pattern,
-                encoding=str(step.get("encoding", "utf-8")),
-                recurse=bool(step.get("recurse", False)),
-            )
+            value = step.get(field_name)
+            if field_name != "content" and not str(value).strip():
+                raise ValueError(f"Workflow {operation} step requires a non-empty '{field_name}'.")
 
-        if operation == "system-info":
-            return provider.system_info()
+    @staticmethod
+    def _run_exec_workflow_step(provider: Any, step: Dict[str, Any]) -> RemoteOperationResult:
+        return provider.execute(
+            str(step.get("command", "")),
+            cwd=step.get("cwd"),
+            timeout_seconds=step.get("timeout_seconds"),
+        )
 
-        if operation == "probe":
-            return provider.probe()
+    @staticmethod
+    def _run_read_file_workflow_step(provider: Any, step: Dict[str, Any]) -> RemoteOperationResult:
+        return provider.read_file(
+            str(step.get("path", "")),
+            encoding=str(step.get("encoding", "utf-8")),
+        )
 
-        raise ValueError(f"Unsupported workflow operation: {operation}")
+    @staticmethod
+    def _run_list_dir_workflow_step(provider: Any, step: Dict[str, Any]) -> RemoteOperationResult:
+        return provider.list_dir(str(step.get("path", "")))
+
+    @staticmethod
+    def _run_write_file_workflow_step(provider: Any, step: Dict[str, Any]) -> RemoteOperationResult:
+        return provider.write_file(
+            str(step.get("path", "")),
+            content=str(step.get("content")),
+            encoding=str(step.get("encoding", "utf-8")),
+        )
+
+    @staticmethod
+    def _run_search_text_workflow_step(provider: Any, step: Dict[str, Any]) -> RemoteOperationResult:
+        return provider.search_text(
+            str(step.get("path", "")),
+            str(step.get("pattern", "")),
+            encoding=str(step.get("encoding", "utf-8")),
+            recurse=bool(step.get("recurse", False)),
+        )
+
+    @staticmethod
+    def _run_system_info_workflow_step(provider: Any, step: Dict[str, Any]) -> RemoteOperationResult:
+        del step
+        return provider.system_info()
+
+    @staticmethod
+    def _run_probe_workflow_step(provider: Any, step: Dict[str, Any]) -> RemoteOperationResult:
+        del step
+        return provider.probe()
 
     def _resolve_workflow_templates(
         self,

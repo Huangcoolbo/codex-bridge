@@ -54,8 +54,12 @@ type Copy = {
     qrReady: string
     qrWaiting: string
     qrDetected: string
+    qrDetectedLive: string
+    qrDetectedRemembered: string
     qrFailed: string
     connectEndpointMissing: string
+    connectEndpointStale: string
+    connectNeedsRepair: string
     qrPaired: string
     qrConnected: string
     qrIdle: string
@@ -85,6 +89,27 @@ type Copy = {
     pairHint: string
     connectHint: string
     disconnectHint: string
+    stateTitle: string
+    stateIdle: string
+    stateIdleDescription: string
+    statePairReady: string
+    statePairReadyDescription: string
+    statePairing: string
+    statePairingDescription: string
+    statePaired: string
+    statePairedDescription: string
+    stateEndpointReady: string
+    stateEndpointReadyDescription: string
+    stateConnecting: string
+    stateConnectingDescription: string
+    stateConnected: string
+    stateConnectedDescription: string
+    stateStaleEndpoint: string
+    stateStaleEndpointDescription: string
+    stateRepairRequired: string
+    stateRepairRequiredDescription: string
+    stateError: string
+    stateErrorDescription: string
     sessionIdle: string
     recentTitle: string
     noRecent: string
@@ -238,8 +263,12 @@ export const COPY: Record<Locale, Copy> = {
       qrReady: "Read the pairing endpoint and code from the phone",
       qrWaiting: "Waiting for wireless service",
       qrDetected: "Wireless connect endpoint is ready",
+      qrDetectedLive: "Discovered a live wireless connect endpoint from the device",
+      qrDetectedRemembered: "Reused the last successful wireless connect endpoint for this phone",
       qrFailed: "Wireless pairing setup failed.",
       connectEndpointMissing: "Pairing succeeded, but no wireless connect endpoint was discovered yet. If you connect manually once, the client will remember that address for the same phone.",
+      connectEndpointStale: "The remembered wireless connect endpoint no longer accepts connections. Refresh wireless debugging or fill the latest connect endpoint again.",
+      connectNeedsRepair: "The phone no longer trusts this computer for wireless debugging. Open Wireless debugging on the phone and pair again.",
       qrPaired: "Paired successfully. Looking for the wireless connect endpoint",
       qrConnected: "Wireless debugging is connected",
       qrIdle: "On the phone: Wireless debugging -> Pair device with pairing code. Enter the pairing endpoint and code on the right.",
@@ -269,6 +298,27 @@ export const COPY: Record<Locale, Copy> = {
       pairHint: "Use the phone pairing screen.",
       connectHint: "Connect after pairing, or reuse a remembered connect endpoint.",
       disconnectHint: "End the active session.",
+      stateTitle: "Wireless State",
+      stateIdle: "Idle",
+      stateIdleDescription: "No wireless pairing session is prepared yet.",
+      statePairReady: "Ready to pair",
+      statePairReadyDescription: "The pairing endpoint and code are ready. You can start pairing now.",
+      statePairing: "Pairing",
+      statePairingDescription: "The client is establishing wireless debugging trust with the phone.",
+      statePaired: "Paired",
+      statePairedDescription: "The phone trusts this computer, but the wireless connect endpoint has not been confirmed yet.",
+      stateEndpointReady: "Connect endpoint ready",
+      stateEndpointReadyDescription: "A wireless connect endpoint is available. The next step is connecting.",
+      stateConnecting: "Connecting",
+      stateConnectingDescription: "The client is trying to open the wireless debugging session.",
+      stateConnected: "Connected",
+      stateConnectedDescription: "Wireless debugging is active and the phone is reachable through ADB.",
+      stateStaleEndpoint: "Endpoint expired",
+      stateStaleEndpointDescription: "The remembered connect endpoint no longer accepts connections. Refresh the phone's wireless debugging page or fill the latest connect endpoint again.",
+      stateRepairRequired: "Re-pair required",
+      stateRepairRequiredDescription: "The phone no longer trusts this computer for wireless debugging. Pair again from the phone's Wireless debugging page.",
+      stateError: "Error",
+      stateErrorDescription: "The current wireless step failed, but the exact cause was not recognized as a stale endpoint or a re-pair requirement.",
       sessionIdle: "No active session",
       recentTitle: "Recent Devices",
       noRecent: "No recent devices",
@@ -420,8 +470,12 @@ export const COPY: Record<Locale, Copy> = {
       qrReady: "请在手机上查看配对地址和配对码",
       qrWaiting: "等待无线服务出现",
       qrDetected: "无线连接地址已就绪",
+      qrDetectedLive: "已经从设备发现当前可用的无线连接地址",
+      qrDetectedRemembered: "已回填这台手机上次成功的无线连接地址",
       qrFailed: "无线配对准备失败。",
       connectEndpointMissing: "配对成功，但暂时还没有发现无线连接地址。如果你手动连接成功一次，客户端会记住这台手机的连接地址。",
+      connectEndpointStale: "上次记住的无线连接地址已经不再接受连接。请刷新无线调试页面，或重新填写最新连接地址。",
+      connectNeedsRepair: "手机已经不再信任这台电脑的无线调试连接。请回到手机无线调试页面重新配对。",
       qrPaired: "配对成功，正在查找无线连接地址",
       qrConnected: "无线调试已连接",
       qrIdle: "在手机里打开 无线调试 -> 使用配对码配对设备，把配对地址和配对码填到右侧。",
@@ -451,6 +505,27 @@ export const COPY: Record<Locale, Copy> = {
       pairHint: "直接使用手机配对页里的信息。",
       connectHint: "配对后直接连接，或复用已经记住的连接地址。",
       disconnectHint: "结束当前会话。",
+      stateTitle: "无线状态",
+      stateIdle: "空闲",
+      stateIdleDescription: "还没有准备当前这次无线配对会话。",
+      statePairReady: "可开始配对",
+      statePairReadyDescription: "配对地址和配对码都已就绪，可以开始配对。",
+      statePairing: "配对中",
+      statePairingDescription: "客户端正在和手机建立无线调试信任关系。",
+      statePaired: "已配对",
+      statePairedDescription: "手机已经信任这台电脑，但还没有确认可用的无线连接地址。",
+      stateEndpointReady: "连接地址已就绪",
+      stateEndpointReadyDescription: "当前已经有可用的无线连接地址，下一步就是建立无线调试连接。",
+      stateConnecting: "连接中",
+      stateConnectingDescription: "客户端正在尝试建立无线调试会话。",
+      stateConnected: "已连接",
+      stateConnectedDescription: "无线调试已经处于活动状态，这台手机可以通过 ADB 访问。",
+      stateStaleEndpoint: "连接地址已失效",
+      stateStaleEndpointDescription: "上次记住的连接地址已经不再接受连接。请刷新手机无线调试页面，或重新填写最新连接地址。",
+      stateRepairRequired: "需要重新配对",
+      stateRepairRequiredDescription: "手机已经不再信任这台电脑的无线调试连接。请回到手机无线调试页面重新配对。",
+      stateError: "出现错误",
+      stateErrorDescription: "当前无线步骤失败了，但还无法明确归类成地址失效或必须重新配对。",
       sessionIdle: "无活动会话",
       recentTitle: "最近设备",
       noRecent: "暂无最近设备",

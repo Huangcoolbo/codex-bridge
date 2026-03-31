@@ -11,6 +11,7 @@ import {
   isPublicGatewayRoute,
   type GatewayAuthInfo
 } from "./agentGatewayAuthCore"
+import { buildGatewayAuthBootstrapInfo } from "./agentGatewayBootstrapCore"
 import { ensureRuntimeWorkspace, getRuntimePaths } from "./runtimePaths"
 
 const gatewayTokenEnvVar = "BRIDGE_AGENT_TOKEN"
@@ -70,19 +71,12 @@ export function getGatewayAuthMetadata(): {
 export function getGatewayAuthBootstrapInfo(): {
   envVar: string
   tokenSource: "env" | "file"
-  tokenPath: string | null
+  localFileStrategy: "app-data-directory"
+  localFileLocations: string[]
   resolutionOrder: string[]
 } {
   const { source } = resolveGatewayToken()
-  return {
-    envVar: gatewayTokenEnvVar,
-    tokenSource: source,
-    tokenPath: source === "file" ? getRuntimePaths().gatewayTokenPath : null,
-    resolutionOrder: [
-      `read ${gatewayTokenEnvVar}`,
-      "if missing, read the local gateway token file"
-    ]
-  }
+  return buildGatewayAuthBootstrapInfo(source, gatewayTokenEnvVar)
 }
 
 export function inspectGatewayAuthorization(method: string, pathname: string, request: IncomingMessage): {

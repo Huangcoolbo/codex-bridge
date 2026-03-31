@@ -6,6 +6,7 @@
     <a href="./docs/GETTING_STARTED.zh-CN.md">快速上手</a> ·
     <a href="./AGENT_GATEWAY.md">Gateway 接口</a> ·
     <a href="./PROJECT_DESIGN.zh-CN.md">项目设计</a> ·
+    <a href="./docs/ENGINEERING_ROADMAP.zh-CN.md">工程路线图</a> ·
     <a href="./docs/DEVELOPMENT.zh-CN.md">开发说明</a> ·
     <a href="./REAL_DEVICE_VALIDATION.zh-CN.md">真实联调</a> ·
     <a href="./CHANGELOG.md">CHANGELOG</a>

@@ -3,8 +3,9 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { agentGatewayHost, agentGatewayPort, agentGatewayUrl } from "./agentGatewayConfig"
 import { androidRoutes } from "./agentGatewayAndroidRoutes"
 import { commandRoutes } from "./agentGatewayCommandRoutes"
+import { diagnoseGatewayException } from "./agentGatewayDiagnosticsCore"
+import { diagnosticsRoutes } from "./agentGatewayDiagnosticsRoutes"
 import { HttpError, respondJson, type GatewayRouteDefinition } from "./agentGatewayHttp"
-import { resolveRoute } from "./agentGatewayRouter"
 import {
   attachGatewayAudit,
   getGatewayAuthBootstrapInfo,
@@ -13,6 +14,7 @@ import {
   getGatewayTokenHelpText,
   inspectGatewayAuthorization
 } from "./agentGatewaySecurity"
+import { createGatewayRequestHandler, type GatewaySecurityHooks } from "./agentGatewayRequestHandlerCore"
 import { targetRoutes } from "./agentGatewayTargetRoutes"
 
 let gatewayServer: Server | null = null
@@ -44,36 +46,18 @@ const healthRoutes: GatewayRouteDefinition[] = [
 
 const routes: GatewayRouteDefinition[] = [
   ...healthRoutes,
+  ...diagnosticsRoutes,
   ...androidRoutes,
   ...targetRoutes,
   ...commandRoutes
 ]
 
-export async function handleRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
-  const url = new URL(request.url || "/", agentGatewayUrl)
-  const method = request.method || "GET"
-  const inspection = inspectGatewayAuthorization(method, url.pathname, request)
-  const authInfo = inspection.authInfo
-  attachGatewayAudit(request, response, method, url.pathname, authInfo)
-  if (!inspection.authorized) {
-    throw new HttpError(401, { success: false, error: "Missing or invalid gateway token." })
-  }
-  const resolved = resolveRoute(method, url.pathname, routes)
-
-  if (!resolved) {
-    respondJson(response, 404, { success: false, error: "Not found" })
-    return
-  }
-
-  await resolved.route.handler({
-    request,
-    response,
-    url,
-    method,
-    pathname: url.pathname,
-    params: resolved.match.params
-  })
+const defaultGatewaySecurityHooks: GatewaySecurityHooks = {
+  inspectAuthorization: inspectGatewayAuthorization,
+  attachAudit: attachGatewayAudit
 }
+
+export const handleRequest = createGatewayRequestHandler(routes, defaultGatewaySecurityHooks, agentGatewayUrl)
 
 export function startAgentGateway(): void {
   if (gatewayServer) {
@@ -86,9 +70,11 @@ export function startAgentGateway(): void {
         respondJson(response, error.statusCode, error.payload)
         return
       }
+      const diagnosis = diagnoseGatewayException("gateway-request", error)
       respondJson(response, 500, {
         success: false,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
+        diagnosis
       })
     })
   })

@@ -236,7 +236,7 @@ For this repository, that means health metadata equivalent to:
 - auth required or not
 - accepted auth schemes
 - token source
-- token file path if the token is file-backed
+- token bootstrap strategy if the token is file-backed
 - preferred automatic resolution order
 
 ### Windows / Target Management
@@ -296,7 +296,7 @@ Prefer this bootstrap order:
 ```text
 1. agent reads BRIDGE_AGENT_TOKEN
 2. if missing, agent calls GET /health
-3. health tells the agent where the local token file is
+3. health tells the agent how to resolve the local token file from the application data directory
 4. agent reads the token file
 5. agent calls protected gateway routes with that token
 ```

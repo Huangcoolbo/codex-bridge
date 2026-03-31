@@ -1371,6 +1371,12 @@ button:disabled {
   justify-content: center;
 }
 
+.qr-meta small {
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
 .qr-meta strong {
   color: var(--text-primary);
   font-size: 17px;
@@ -1381,6 +1387,29 @@ button:disabled {
   color: var(--text-muted);
   font-size: var(--fs-caption);
   word-break: break-all;
+}
+
+.wireless-state-card {
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 250, 252, 0.96));
+  box-shadow: var(--ghost-shadow);
+}
+
+.wireless-state-card.is-success {
+  border-color: rgba(22, 163, 74, 0.2);
+  background: color-mix(in srgb, var(--accent-soft) 56%, rgba(255, 255, 255, 0.92));
+}
+
+.wireless-state-card.is-warning {
+  border-color: rgba(217, 119, 6, 0.24);
+  background: color-mix(in srgb, rgba(251, 191, 36, 0.18) 68%, rgba(255, 255, 255, 0.94));
+}
+
+.wireless-state-card.is-danger {
+  border-color: rgba(220, 38, 38, 0.2);
+  background: color-mix(in srgb, rgba(239, 68, 68, 0.1) 72%, rgba(255, 255, 255, 0.95));
 }
 
 .qr-empty-state {

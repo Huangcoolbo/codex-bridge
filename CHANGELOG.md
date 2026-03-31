@@ -6,15 +6,26 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-31
+
 ### Added
 - 为本地 HTTP gateway 新增 token 鉴权；除 `GET /health` 外，其余接口现在要求本地 token，避免仅靠 `127.0.0.1` 作为唯一安全边界。
 - 为本地 HTTP gateway 新增请求审计日志，记录方法、路径、状态码、调用方标识和耗时，补上最基础的可追溯性。
 - 新增 `desktop-client/tests/agentGatewaySecurity.test.ts`，补充 gateway 公开路由、token 提取和鉴权行为的最小自动化覆盖。
+- 新增 `desktop-client/tests/agentGatewayBootstrapCore.test.ts`，补充 `/health` bootstrap 信息的纯核心测试，确保公开入口只暴露接入策略、不直接暴露本地 token 文件绝对路径。
+- 新增 `desktop-client/tests/agentGatewayRoutes.test.ts`，补充 `/api/targets`、`/api/targets/current` 和 `/api/probe` 的 route-level 集成测试，开始覆盖“鉴权 -> 路由 -> service -> 结果结构”这条主链。
+- 新增 `GET /api/diagnostics/self-check` 自检接口，并新增 `desktop-client/tests/agentGatewayDiagnosticsCore.test.ts`，开始把“环境问题 vs 代码回归”的判断收成结构化诊断能力。
 
 ### Changed
 - 调整 gateway 健康检查返回；现在会明确说明当前鉴权模式和本地审计已启用，便于 agent 或外部调用方按正确方式接入。
 - 更新 [AGENT_GATEWAY.md](./AGENT_GATEWAY.md) 文档，补充 token 使用方式、本地 token 文件位置和审计日志位置。
+- 重写 [AGENT_GATEWAY.md](./AGENT_GATEWAY.md) 中的接口职责边界说明，集中澄清 `/health`、`/api/diagnostics/self-check`、Windows 目标接口和 Android 设备接口各自检查哪一层、何时需要 target 或 serial，以及哪些诊断属于本地自检、哪些属于远程环境判断。
 - 调整 Android 无线连接工作流；客户端现在会优先从 mDNS 无线服务或已连接无线设备推断连接地址，并在手动连接成功后按手机 IP 记住连接地址，减少重复手填。
+- 调整 Android 无线状态提示；现在会区分“发现到当前可用连接地址”“回填上次成功的连接地址”“记住的地址已经失效”“需要重新配对”这几类更接近真实原因的状态。
+- 为 Android 无线流程新增显式状态模型；现在会明确区分“空闲 / 可开始配对 / 配对中 / 已配对 / 连接地址已就绪 / 连接中 / 已连接 / 地址失效 / 需要重新配对 / 通用错误”，让 UI 与恢复逻辑不再主要依赖零散提示文案。
+- 收紧公开的 `/health` 返回；保留自动接入所需的 bootstrap 规则，但不再直接暴露本地 token 文件绝对路径。
+- 新增 [工程路线图](./docs/ENGINEERING_ROADMAP.zh-CN.md)，把从当前状态到“真实可用”的优先工程工作单独整理成文档。
+- 调整 gateway 关键失败返回；`/api/probe`、`/api/command/*` 和 Android gateway 关键接口现在会附带 `diagnosis`，明确更像环境问题还是代码回归，并尽量给出具体环境原因。
 
 ## [0.1.6] - 2026-03-30
 
