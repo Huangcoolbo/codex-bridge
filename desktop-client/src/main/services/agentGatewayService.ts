@@ -7,6 +7,7 @@ import { HttpError, respondJson, type GatewayRouteDefinition } from "./agentGate
 import { resolveRoute } from "./agentGatewayRouter"
 import {
   attachGatewayAudit,
+  getGatewayAuthBootstrapInfo,
   getGatewayAuditHelpText,
   getGatewayAuthMetadata,
   getGatewayTokenHelpText,
@@ -29,6 +30,7 @@ const healthRoutes: GatewayRouteDefinition[] = [
           port: agentGatewayPort,
           url: agentGatewayUrl,
           auth: getGatewayAuthMetadata(),
+          auth_bootstrap: getGatewayAuthBootstrapInfo(),
           audit: {
             enabled: true,
             hint: getGatewayAuditHelpText()

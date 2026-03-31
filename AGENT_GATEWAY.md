@@ -121,7 +121,31 @@ data/agent-gateway.audit.log
 %APPDATA%/codex-bridge-desktop-client/data/agent-gateway.audit.log
 ```
 
-## 4. 当前接口总览
+## 4. Agent 如何自动拿到 token
+
+这里的目标不是让用户手工复制 token，而是让调用方按固定顺序自动解析：
+
+```text
+1. 先读环境变量 BRIDGE_AGENT_TOKEN
+2. 如果没有，再调用 GET /health
+3. 从 gateway.auth_bootstrap.token_path 读取本地 token 文件
+4. 再带着 token 调真正的 /api/* 接口
+```
+
+也就是说，推荐的自动化启动顺序不是：
+
+```text
+问用户 token 是多少
+```
+
+而是：
+
+```text
+先看环境变量
+再看 health 里告诉你的 token 文件位置
+```
+
+## 5. 当前接口总览
 
 ```text
 GET    /health
@@ -158,7 +182,7 @@ POST   /api/android/devices/:serial/files/write
 POST   /api/android/devices/:serial/files/push
 ```
 
-## 5. 先理解 4 条主路径
+## 6. 先理解 4 条主路径
 
 ### 4.1 Target 管理
 
@@ -206,7 +230,7 @@ Agent
   -> Android device
 ```
 
-## 6. 返回结构
+## 7. 返回结构
 
 大部分接口会保持这种统一结构：
 
@@ -236,7 +260,7 @@ data
   -> 结构化结果
 ```
 
-## 7. 最小可用调用序列
+## 8. 最小可用调用序列
 
 ### 6.1 健康检查
 
@@ -269,7 +293,7 @@ curl -X POST http://127.0.0.1:8765/api/command/execute ^
   -d "{\"target\":\"localhost\",\"shell\":\"powershell\",\"command\":\"Get-Date\"}"
 ```
 
-## 8. 常见调用模板
+## 9. 常见调用模板
 
 这一节不再讲抽象接口，而是直接给最常见的调用模板。
 

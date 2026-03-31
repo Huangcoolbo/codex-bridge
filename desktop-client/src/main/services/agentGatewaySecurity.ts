@@ -67,6 +67,24 @@ export function getGatewayAuthMetadata(): {
   }
 }
 
+export function getGatewayAuthBootstrapInfo(): {
+  envVar: string
+  tokenSource: "env" | "file"
+  tokenPath: string | null
+  resolutionOrder: string[]
+} {
+  const { source } = resolveGatewayToken()
+  return {
+    envVar: gatewayTokenEnvVar,
+    tokenSource: source,
+    tokenPath: source === "file" ? getRuntimePaths().gatewayTokenPath : null,
+    resolutionOrder: [
+      `read ${gatewayTokenEnvVar}`,
+      "if missing, read the local gateway token file"
+    ]
+  }
+}
+
 export function inspectGatewayAuthorization(method: string, pathname: string, request: IncomingMessage): {
   authorized: boolean
   authInfo: GatewayAuthInfo
@@ -117,7 +135,7 @@ export function attachGatewayAudit(request: IncomingMessage, response: ServerRes
 }
 
 export function getGatewayTokenHelpText(): string {
-  return "Use a local gateway token via Authorization: Bearer <token> or X-Codex-Bridge-Token."
+  return "Use a local gateway token via Authorization: Bearer <token> or X-Codex-Bridge-Token. Resolve it from BRIDGE_AGENT_TOKEN first, otherwise read the local token file."
 }
 
 export function getGatewayAuditHelpText(): string {

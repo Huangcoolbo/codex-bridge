@@ -219,6 +219,97 @@ At minimum, the gateway should expose actions equivalent to:
 
 If the project contains a client operation that materially changes bridge state, and the agent cannot do the same thing through the gateway, treat the implementation as incomplete.
 
+## Current Repository API Families
+
+When working against this repository specifically, use these API families as the reference surface.
+
+Do not treat the exact naming as mandatory for all future projects, but do treat the capability coverage as mandatory.
+
+### Base
+
+- `GET /health`
+
+When the gateway is token-protected, the public health route should still expose enough bootstrap metadata for an agent to learn how to obtain the local token automatically.
+
+For this repository, that means health metadata equivalent to:
+
+- auth required or not
+- accepted auth schemes
+- token source
+- token file path if the token is file-backed
+- preferred automatic resolution order
+
+### Windows / Target Management
+
+- `GET /api/targets`
+- `GET /api/targets/:name`
+- `POST /api/targets`
+- `PUT /api/targets/:name`
+- `DELETE /api/targets/:name`
+- `GET /api/targets/current`
+- `POST /api/targets/current`
+- `DELETE /api/targets/current`
+- `POST /api/probe`
+- `POST /api/command/execute`
+- `GET /api/command/last`
+
+### Android
+
+- `GET /api/android/devices`
+- `GET /api/android/devices/:serial/info`
+- `GET /api/android/current`
+- `POST /api/android/current`
+- `DELETE /api/android/current`
+- `POST /api/android/devices/:serial/files/list`
+- `POST /api/android/devices/:serial/files/read`
+- `POST /api/android/devices/:serial/files/pull`
+- `POST /api/android/devices/:serial/files/mkdir`
+- `POST /api/android/devices/:serial/files/write`
+- `POST /api/android/devices/:serial/files/push`
+
+These route families matter because they prove that:
+
+```text
+client actions
+  ->
+can be expressed as gateway actions
+  ->
+and therefore can be used directly by an agent
+```
+
+In particular, the following client-facing actions must not remain UI-only:
+
+- add remote host
+- switch current target
+- probe target
+- execute target action
+- choose current Android device
+- list Android files
+- perform controlled Android writes
+
+## Local Gateway Auth Bootstrap
+
+When the gateway is local-only but still protected, do not force a human to manually copy the token by default.
+
+Prefer this bootstrap order:
+
+```text
+1. agent reads BRIDGE_AGENT_TOKEN
+2. if missing, agent calls GET /health
+3. health tells the agent where the local token file is
+4. agent reads the token file
+5. agent calls protected gateway routes with that token
+```
+
+This keeps the gateway protected without turning token usage into a manual ritual.
+
+For this repository specifically, treat the following as part of the usable gateway contract:
+
+- `GET /health` is public
+- protected routes require a token
+- the health response tells the agent how to resolve the token automatically
+- the agent should not need a human to retype the token in normal local use
+
 ## What Counts As Incomplete
 
 Treat the implementation as incomplete if any of these are true:

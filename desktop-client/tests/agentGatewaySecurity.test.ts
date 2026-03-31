@@ -57,3 +57,17 @@ test("rejects missing token on protected routes", () => {
     mode: "missing"
   })
 })
+
+test("header token mode is preserved on mismatch", () => {
+  const inspection = inspectGatewayAuthorizationAgainstToken(
+    "POST",
+    "/api/targets",
+    mockRequest({ "x-codex-bridge-token": "wrong-token" }),
+    "bridge-test-token"
+  )
+  assert.equal(inspection.authorized, false)
+  assert.deepEqual(inspection.authInfo, {
+    required: true,
+    mode: "header"
+  })
+})
