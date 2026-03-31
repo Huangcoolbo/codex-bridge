@@ -28,6 +28,7 @@ type AndroidTargetMode = "wireless" | "usb"
 const automationDraftEvent = "bridge:automation-draft"
 const automationStartEvent = "bridge:automation-command-start"
 const automationFinishEvent = "bridge:automation-command-finish"
+const androidEndpointMemoryKey = "bridge-android-connect-endpoints"
 
 function safeStringify(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value, null, 2)
@@ -83,6 +84,74 @@ function sourceLabel(copy: (typeof COPY)[Locale], source: WindowsDiscoveryCandid
     default:
       return source
   }
+}
+
+function extractHostFromEndpoint(endpoint: string): string | null {
+  const trimmed = endpoint.trim()
+  if (!trimmed) {
+    return null
+  }
+  const separatorIndex = trimmed.lastIndexOf(":")
+  if (separatorIndex <= 0) {
+    return null
+  }
+  const host = trimmed.slice(0, separatorIndex).trim()
+  return host || null
+}
+
+function parseConnectEndpointFromOutput(stdout: string): string | null {
+  const match = stdout.match(/\b(?:already connected to|connected to)\s+([^\s\r\n]+)/i)
+  return match?.[1]?.trim() || null
+}
+
+function loadRememberedAndroidEndpoints(): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(androidEndpointMemoryKey)
+    if (!raw) {
+      return {}
+    }
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string")
+    )
+  } catch {
+    return {}
+  }
+}
+
+function rememberAndroidConnectEndpoint(endpoint: string): void {
+  const host = extractHostFromEndpoint(endpoint)
+  if (!host) {
+    return
+  }
+  const current = loadRememberedAndroidEndpoints()
+  current[host] = endpoint.trim()
+  window.localStorage.setItem(androidEndpointMemoryKey, JSON.stringify(current))
+}
+
+function getRememberedAndroidConnectEndpoint(endpointLike: string): string | null {
+  const host = extractHostFromEndpoint(endpointLike)
+  if (!host) {
+    return null
+  }
+  return loadRememberedAndroidEndpoints()[host] ?? null
+}
+
+function inferAndroidConnectEndpoint(snapshot: AndroidDiscoverySnapshot, preferredHost?: string | null): string | null {
+  const connectService = snapshot.services.find((service) => service.serviceType.includes("connect") && service.address.trim())
+  if (connectService?.address) {
+    return connectService.address.trim()
+  }
+
+  const wirelessDevices = snapshot.devices.filter((device) => device.state === "device" && device.serial.includes(":"))
+  if (preferredHost) {
+    const preferredDevice = wirelessDevices.find((device) => extractHostFromEndpoint(device.serial) === preferredHost)
+    if (preferredDevice) {
+      return preferredDevice.serial.trim()
+    }
+  }
+
+  return wirelessDevices[0]?.serial?.trim() || null
 }
 
 export default function App(): JSX.Element {
@@ -284,17 +353,21 @@ export default function App(): JSX.Element {
     }
 
     const pairService = androidDiscovery.services.find((service) => service.serviceType.includes("pair"))
-    const connectService = androidDiscovery.services.find((service) => service.serviceType.includes("connect"))
+    const inferredConnectEndpoint = inferAndroidConnectEndpoint(
+      androidDiscovery,
+      extractHostFromEndpoint(connectEndpoint) ?? extractHostFromEndpoint(pairEndpoint)
+    )
 
     if (pairService && !pairEndpoint.trim()) {
       setPairEndpoint(pairService.address)
     }
 
-    if (connectService && !connectEndpoint.trim()) {
-      setConnectEndpoint(connectService.address)
+    if (inferredConnectEndpoint && inferredConnectEndpoint !== connectEndpoint.trim()) {
+      setConnectEndpoint(inferredConnectEndpoint)
+      rememberAndroidConnectEndpoint(inferredConnectEndpoint)
     }
 
-    if (connectService) {
+    if (inferredConnectEndpoint) {
       setAndroidQrStatus(copy.android.qrDetected)
       return
     }
@@ -303,6 +376,18 @@ export default function App(): JSX.Element {
       setAndroidQrStatus(copy.android.qrReady)
     }
   }, [androidDiscovery, pairEndpoint, connectEndpoint, androidQrStatus, copy.android.qrDetected, copy.android.qrReady])
+
+  useEffect(() => {
+    if (connectEndpoint.trim() || !pairEndpoint.trim()) {
+      return
+    }
+
+    const remembered = getRememberedAndroidConnectEndpoint(pairEndpoint)
+    if (remembered) {
+      setConnectEndpoint(remembered)
+      setAndroidQrStatus(copy.android.qrDetected)
+    }
+  }, [pairEndpoint, connectEndpoint, copy.android.qrDetected])
 
   function setPlatformSelection(platform: ProfilePlatform, name: string): void {
     setSelectedProfiles((current) => ({ ...current, [platform]: name }))
@@ -506,13 +591,15 @@ export default function App(): JSX.Element {
   }
 
   async function waitForAndroidConnectEndpoint(maxAttempts = 6, delayMs = 1500): Promise<string | null> {
+    const preferredHost = extractHostFromEndpoint(connectEndpoint) ?? extractHostFromEndpoint(pairEndpoint)
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const snapshot = await refreshAndroidDiscoverySilently()
-      const connectService = snapshot.services.find((service) => service.serviceType.includes("connect"))
-      if (connectService?.address) {
-        setConnectEndpoint(connectService.address)
+      const nextEndpoint = inferAndroidConnectEndpoint(snapshot, preferredHost)
+      if (nextEndpoint) {
+        setConnectEndpoint(nextEndpoint)
+        rememberAndroidConnectEndpoint(nextEndpoint)
         setAndroidQrStatus(copy.android.qrDetected)
-        return connectService.address
+        return nextEndpoint
       }
 
       if (attempt < maxAttempts - 1) {
@@ -569,6 +656,12 @@ export default function App(): JSX.Element {
         return
       }
 
+      const resolvedConnectEndpoint = parseConnectEndpointFromOutput(connectResult.stdout) ?? nextConnectEndpoint
+      if (resolvedConnectEndpoint) {
+        setConnectEndpoint(resolvedConnectEndpoint)
+        rememberAndroidConnectEndpoint(resolvedConnectEndpoint)
+      }
+
       const successResult = {
         ...connectResult,
         stdout: [pairResult.stdout.trim(), connectResult.stdout.trim()].filter(Boolean).join("\n")
@@ -585,7 +678,14 @@ export default function App(): JSX.Element {
 
   async function handleAndroidConnect(): Promise<void> {
     setAndroidTargetMode("wireless")
-    await runTask(copy.android.connecting, () => window.bridgeDesktop.connectAndroid(connectEndpoint, adbPath || undefined))
+    await runTask(copy.android.connecting, () => window.bridgeDesktop.connectAndroid(connectEndpoint, adbPath || undefined), (result) => {
+      const resolvedConnectEndpoint = parseConnectEndpointFromOutput(result.stdout) ?? connectEndpoint.trim()
+      if (resolvedConnectEndpoint) {
+        setConnectEndpoint(resolvedConnectEndpoint)
+        rememberAndroidConnectEndpoint(resolvedConnectEndpoint)
+      }
+      setAndroidQrStatus(copy.android.qrConnected)
+    })
     await refreshAndroidDiscoverySilently()
   }
 

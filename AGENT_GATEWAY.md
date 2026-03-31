@@ -82,7 +82,46 @@ success: true
 curl http://127.0.0.1:8765/health
 ```
 
-## 3. 当前接口总览
+## 3. 认证与审计
+
+从现在开始，除了 `GET /health` 之外，其余 gateway 接口都要求本地 token。
+
+支持两种写法：
+
+```text
+Authorization: Bearer <token>
+X-Codex-Bridge-Token: <token>
+```
+
+如果没有显式设置环境变量 `BRIDGE_AGENT_TOKEN`，客户端会在本地自动生成 token 文件。
+
+开发态常见位置：
+
+```text
+data/agent-gateway.token
+```
+
+打包版常见位置：
+
+```text
+%APPDATA%/codex-bridge-desktop-client/data/agent-gateway.token
+```
+
+同时，gateway 会把每次请求记到本地审计日志：
+
+开发态常见位置：
+
+```text
+data/agent-gateway.audit.log
+```
+
+打包版常见位置：
+
+```text
+%APPDATA%/codex-bridge-desktop-client/data/agent-gateway.audit.log
+```
+
+## 4. 当前接口总览
 
 ```text
 GET    /health
@@ -119,7 +158,7 @@ POST   /api/android/devices/:serial/files/write
 POST   /api/android/devices/:serial/files/push
 ```
 
-## 4. 先理解 4 条主路径
+## 5. 先理解 4 条主路径
 
 ### 4.1 Target 管理
 
@@ -167,7 +206,7 @@ Agent
   -> Android device
 ```
 
-## 5. 返回结构
+## 6. 返回结构
 
 大部分接口会保持这种统一结构：
 
@@ -197,7 +236,7 @@ data
   -> 结构化结果
 ```
 
-## 6. 最小可用调用序列
+## 7. 最小可用调用序列
 
 ### 6.1 健康检查
 
@@ -208,13 +247,15 @@ curl http://127.0.0.1:8765/health
 ### 6.2 查看已有目标
 
 ```bash
-curl http://127.0.0.1:8765/api/targets
+curl http://127.0.0.1:8765/api/targets ^
+  -H "Authorization: Bearer <token>"
 ```
 
 ### 6.3 设置 current target
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/targets/current ^
+  -H "Authorization: Bearer <token>" ^
   -H "Content-Type: application/json" ^
   -d "{\"target\":\"localhost\"}"
 ```
@@ -223,11 +264,12 @@ curl -X POST http://127.0.0.1:8765/api/targets/current ^
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/command/execute ^
+  -H "Authorization: Bearer <token>" ^
   -H "Content-Type: application/json" ^
   -d "{\"target\":\"localhost\",\"shell\":\"powershell\",\"command\":\"Get-Date\"}"
 ```
 
-## 7. 常见调用模板
+## 8. 常见调用模板
 
 这一节不再讲抽象接口，而是直接给最常见的调用模板。
 
@@ -235,6 +277,7 @@ curl -X POST http://127.0.0.1:8765/api/command/execute ^
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/targets ^
+  -H "Authorization: Bearer <token>" ^
   -H "Content-Type: application/json" ^
   -d "{\"name\":\"lab-win\",\"platform\":\"windows\",\"host\":\"192.168.1.50\",\"port\":22,\"user\":\"admin\",\"auth_type\":\"key\",\"key_path\":\"D:\\\\remote-agent-bridge\\\\data\\\\ssh\\\\localhost_ed25519\",\"note\":\"lab machine\"}"
 ```
@@ -252,6 +295,7 @@ POST /api/targets
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/targets/current ^
+  -H "Authorization: Bearer <token>" ^
   -H "Content-Type: application/json" ^
   -d "{\"target\":\"lab-win\"}"
 ```

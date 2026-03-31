@@ -10,6 +10,8 @@ type RuntimePaths = {
   sourceRoot: string
   bootstrapScriptPath: string
   bootstrapLogPath: string
+  gatewayTokenPath: string
+  gatewayAuditLogPath: string
   registryPath: string
   venvPython: string
   defaultWindowsKeyPath: string
@@ -34,6 +36,8 @@ export function getRuntimePaths(): RuntimePaths {
       sourceRoot: join(runtimeRoot, "src"),
       bootstrapScriptPath: join(runtimeRoot, "scripts", "bootstrap-client-runtime.ps1"),
       bootstrapLogPath: join(dataRoot, "client-bootstrap.log"),
+      gatewayTokenPath: join(dataRoot, "agent-gateway.token"),
+      gatewayAuditLogPath: join(dataRoot, "agent-gateway.audit.log"),
       registryPath: join(dataRoot, "hosts.json"),
       venvPython: join(runtimeRoot, ".venv", "Scripts", "python.exe"),
       defaultWindowsKeyPath: join(dataRoot, "ssh", "localhost_ed25519")
@@ -51,6 +55,8 @@ export function getRuntimePaths(): RuntimePaths {
     sourceRoot: join(repoRoot, "src"),
     bootstrapScriptPath: join(repoRoot, "scripts", "bootstrap-client-runtime.ps1"),
     bootstrapLogPath: join(dataRoot, "client-bootstrap.log"),
+    gatewayTokenPath: join(dataRoot, "agent-gateway.token"),
+    gatewayAuditLogPath: join(dataRoot, "agent-gateway.audit.log"),
     registryPath: join(dataRoot, "hosts.json"),
     venvPython: join(repoRoot, ".venv", "Scripts", "python.exe"),
     defaultWindowsKeyPath: join(dataRoot, "ssh", "localhost_ed25519")

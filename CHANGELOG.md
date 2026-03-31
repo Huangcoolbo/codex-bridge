@@ -7,7 +7,14 @@
 ## [Unreleased]
 
 ### Added
-- 预留后续版本的变更记录区，新的重要能力、行为调整和修复应先追加到本节，再在发布时整理到具体版本。
+- 为本地 HTTP gateway 新增 token 鉴权；除 `GET /health` 外，其余接口现在要求本地 token，避免仅靠 `127.0.0.1` 作为唯一安全边界。
+- 为本地 HTTP gateway 新增请求审计日志，记录方法、路径、状态码、调用方标识和耗时，补上最基础的可追溯性。
+- 新增 `desktop-client/tests/agentGatewaySecurity.test.ts`，补充 gateway 公开路由、token 提取和鉴权行为的最小自动化覆盖。
+
+### Changed
+- 调整 gateway 健康检查返回；现在会明确说明当前鉴权模式和本地审计已启用，便于 agent 或外部调用方按正确方式接入。
+- 更新 [AGENT_GATEWAY.md](./AGENT_GATEWAY.md) 文档，补充 token 使用方式、本地 token 文件位置和审计日志位置。
+- 调整 Android 无线连接工作流；客户端现在会优先从 mDNS 无线服务或已连接无线设备推断连接地址，并在手动连接成功后按手机 IP 记住连接地址，减少重复手填。
 
 ## [0.1.6] - 2026-03-30
 
